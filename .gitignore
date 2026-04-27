@@ -1,0 +1,9 @@
+@"
+.tsm/
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+.pytest_cache/
+"@ | Out-File -FilePath .gitignore -Encoding utf8
