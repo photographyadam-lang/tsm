@@ -458,3 +458,270 @@ class TestDepGraphRawPreserved:
         raw2 = phase2.dependency_graph_raw
         assert raw2, "Phase 2 dep graph raw should not be empty"
         assert "FB-T01" in raw2, f"Dep graph missing FB-T01: {raw2!r}"
+
+
+# ===================================================================
+# P2-T02: Complexity parsing
+# ===================================================================
+
+_INLINE_PHASE_TEMPLATE = """\
+# Test Phase
+
+---
+
+## Phase structure
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| **Phase 1 — Test** | Testing | Pending |
+
+---
+
+# Phase 1 — Test
+
+---
+
+## Tasks
+
+{task_block}
+"""
+
+
+class TestParseComplexityHigh:
+    """**Complexity:** high maps to TaskComplexity.HIGH."""
+
+    def test_parse_complexity_high(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### CX-01 · High complexity task
+
+**Status:** Pending
+**Complexity:** high
+**What:** A high-complexity task.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** High complexity parsed
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "CX-01")
+        assert task is not None, "CX-01 not found"
+        assert task.complexity == TaskComplexity.HIGH, (
+            f"Expected HIGH, got {task.complexity}"
+        )
+
+
+class TestParseComplexityLow:
+    """**Complexity:** low maps to TaskComplexity.LOW."""
+
+    def test_parse_complexity_low(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### CX-02 · Low complexity task
+
+**Status:** Pending
+**Complexity:** low
+**What:** A low-complexity task.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Low complexity parsed
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "CX-02")
+        assert task is not None, "CX-02 not found"
+        assert task.complexity == TaskComplexity.LOW, (
+            f"Expected LOW, got {task.complexity}"
+        )
+
+
+class TestParseComplexityUnsetExplicit:
+    """**Complexity:** unset maps to TaskComplexity.UNSET."""
+
+    def test_parse_complexity_unset_explicit(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### CX-03 · Explicit unset complexity task
+
+**Status:** Pending
+**Complexity:** unset
+**What:** An explicitly unset complexity task.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Unset complexity parsed
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "CX-03")
+        assert task is not None, "CX-03 not found"
+        assert task.complexity == TaskComplexity.UNSET, (
+            f"Expected UNSET, got {task.complexity}"
+        )
+
+
+class TestParseComplexityAbsent:
+    """No **Complexity:** field defaults to TaskComplexity.UNSET."""
+
+    def test_parse_complexity_absent(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### CX-04 · No complexity field
+
+**Status:** Pending
+**What:** A task without a Complexity field.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Absent complexity defaults to UNSET
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "CX-04")
+        assert task is not None, "CX-04 not found"
+        assert task.complexity == TaskComplexity.UNSET, (
+            f"Expected UNSET when absent, got {task.complexity}"
+        )
+
+
+class TestParseComplexityUnknownValue:
+    """Unknown **Complexity:** value logs a warning and returns UNSET."""
+
+    def test_parse_complexity_unknown_value(self):
+        import warnings
+
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### CX-05 · Unknown complexity value
+
+**Status:** Pending
+**Complexity:** extreme
+**What:** A task with an unknown complexity value.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Unknown complexity warns and returns UNSET
+""")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _, phases = _parse_inline(content)
+
+        task = _get_task(phases, "CX-05")
+        assert task is not None, "CX-05 not found"
+        assert task.complexity == TaskComplexity.UNSET, (
+            f"Expected UNSET for unknown value, got {task.complexity}"
+        )
+        # Verify at least one UserWarning about complexity was emitted
+        complexity_warnings = [
+            x for x in w if "complexity" in str(x.message).lower()
+        ]
+        assert len(complexity_warnings) >= 1, (
+            f"Expected a warning about unknown complexity, got {len(w)} warnings"
+        )
+
+
+# ===================================================================
+# P2-T02: Key constraints parsing
+# ===================================================================
+
+
+class TestParseKeyConstraintsPresent:
+    """**Key constraints:** with bullet lines collects them as a list."""
+
+    def test_parse_key_constraints_present(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### KC-01 · Task with key constraints
+
+**Status:** Pending
+**Complexity:** medium
+**What:** A task with key constraints.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Key constraints:**
+- Must not raise exceptions
+- Must be thread-safe
+- Must handle edge case X
+**Done when:** Key constraints collected
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "KC-01")
+        assert task is not None, "KC-01 not found"
+        assert task.key_constraints == [
+            "Must not raise exceptions",
+            "Must be thread-safe",
+            "Must handle edge case X",
+        ], f"Got {task.key_constraints}"
+
+
+class TestParseKeyConstraintsAbsent:
+    """No **Key constraints:** field → key_constraints = []."""
+
+    def test_parse_key_constraints_absent(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### KC-02 · No key constraints field
+
+**Status:** Pending
+**Complexity:** low
+**What:** A task without a Key constraints field.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Absent key constraints returns []
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "KC-02")
+        assert task is not None, "KC-02 not found"
+        assert task.key_constraints == [], (
+            f"Expected [] when absent, got {task.key_constraints}"
+        )
+
+
+class TestParseKeyConstraintsEmptyField:
+    """**Key constraints:** with no value and no bullets → []."""
+
+    def test_parse_key_constraints_empty_field(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### KC-03 · Empty key constraints field
+
+**Status:** Pending
+**Complexity:** low
+**What:** A task with an empty Key constraints field.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Key constraints:**
+**Done when:** Empty key constraints returns []
+""")
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "KC-03")
+        assert task is not None, "KC-03 not found"
+        assert task.key_constraints == [], (
+            f"Expected [] when empty, got {task.key_constraints}"
+        )
+
+
+class TestVc11DoesNotFireForAbsentKeyConstraints:
+    """Absent key constraints must NOT emit a VC-11 signal / exception."""
+
+    def test_vc11_does_not_fire_for_absent_key_constraints(self):
+        content = _INLINE_PHASE_TEMPLATE.format(task_block="""\
+### KC-04 · No key constraints — VC-11 should not fire
+
+**Status:** Pending
+**Complexity:** medium
+**What:** A task that deliberately omits Key constraints.
+**Prerequisite:** None.
+**Hard deps:** None
+**Files:** none
+**Reviewer:** Skip
+**Done when:** Parser returns key_constraints=[] without error
+""")
+        # The test passes if no exception is raised and key_constraints is []
+        _, phases = _parse_inline(content)
+        task = _get_task(phases, "KC-04")
+        assert task is not None, "KC-04 not found"
+        assert task.key_constraints == [], (
+            f"Expected [] when absent, got {task.key_constraints}"
+        )

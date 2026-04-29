@@ -154,7 +154,7 @@ Commit message when complete: "P1-T04: test fixtures for all format variants"
 
 ---
 
-### P2-T01 — tasks_parser.py (core)
+### P2-T01 — tasks_parser.py (core) - done
 
 ```
 Build P2-T01 as specified.
@@ -179,7 +179,7 @@ Commit message when complete: "P2-T01: tasks_parser — state machine core, 21 t
 
 ---
 
-### P2-T02 — tasks_parser.py (edge cases)
+### P2-T02 — tasks_parser.py (edge cases) - done
 
 ```
 Build P2-T02 as specified.

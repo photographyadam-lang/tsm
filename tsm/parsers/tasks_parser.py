@@ -1,4 +1,4 @@
-# tsm/parsers/tasks_parser.py — 7-state line iterator state machine (P2-T01)
+# tsm/parsers/tasks_parser.py — 7-state line iterator state machine (P2-T02)
 #
 # Implements the core parse_tasks_file() function using the §9.2 state
 # machine.  States:
@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import warnings
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional
@@ -85,6 +86,11 @@ def _parse_complexity(value: str) -> TaskComplexity:
         return TaskComplexity.MEDIUM
     if v == "low":
         return TaskComplexity.LOW
+    if v == "unset":
+        return TaskComplexity.UNSET
+    warnings.warn(
+        f"Unknown complexity value: {value!r}, defaulting to UNSET"
+    )
     return TaskComplexity.UNSET
 
 

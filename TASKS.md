@@ -168,7 +168,7 @@ Build all three parsers in dependency order. The TASKS.md parser is split across
 
 ### P2-T02 · tasks_parser.py — complexity, key_constraints, subphase tracking
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Extend tsm/parsers/tasks_parser.py with three additions to the TASK_BLOCK field collection logic. (1) Complexity parsing (§4.1.4a): match **Complexity:** field value against high/medium/low/unset; unknown values silently default to TaskComplexity.UNSET and log a warning (do not raise); absent field defaults to TaskComplexity.UNSET. (2) Key constraints parsing (§4.1.9): **Key constraints:** is an optional field; if absent, key_constraints = [] with no error; if present with no bullet lines, key_constraints = []; if present with bullet lines, strip leading "- " from each line and collect as list of strings. (3) Subphase tracking: when the parser is in SUBPHASE_HEADER state (triggered by a ## heading that is not "Phase structure"), record the current subphase heading text; assign it to Task.subphase for all tasks collected until the next ## or # heading. No state machine changes — all additions are within existing field collection logic. Implements §9.5 complexity/key_constraints/subphase edge cases and §4.1.4a.
 **Prerequisite:** P2-T01 complete with all 21 tests passing.
@@ -193,7 +193,7 @@ Build all three parsers in dependency order. The TASKS.md parser is split across
 
 ### P2-T03 · session_parser.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/parsers/session_parser.py with parse_session_file(path: Path) -> SessionState. Section-based approach per §9.3: split file content on --- horizontal rule lines to identify section blocks; identify each block by its ## heading text. Parse *Last updated:* from the first non-blank line using two format attempts: datetime.strptime(value, "%Y-%m-%dT%H:%M") first, then datetime.strptime(value, "%Y-%m-%d") with time set to 00:00 for legacy date-only format (§9.5). Parse ## Active phase into active_phase_name and active_phase_spec strings. Parse ## Active task: store full block content verbatim in active_task_raw; also extract task ID and title from the **<ID> — <title>** bold line for SessionState.active_task stub; parse the "- Complexity:" bullet for TaskComplexity value; if block contains only [none] or is empty, set active_task = None (§4.2.3). Parse ## Up next as 5-column pipe-delimited table; if Complexity column is absent, default all rows to TaskComplexity.UNSET (§9.5). Parse ## Completed tasks as 3-column table. Parse ## Out of scope: store verbatim in out_of_scope_raw. Implements §9.3 and all §9.5 SESSIONSTATE edge cases.
 **Prerequisite:** P1-T04 complete.
@@ -216,7 +216,7 @@ Build all three parsers in dependency order. The TASKS.md parser is split across
 
 ### P2-T04 · completed_parser.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Implement tsm/parsers/completed_parser.py with parse_completed_file(path: Path) -> list[tuple[str, list[dict]]]. Identify phase sections by ## headings. Collect rows from the pipe-delimited table under each heading into a list of dicts with keys: task, description, complexity, commit, notes. Return a list of (phase_name, rows) tuples in file order. Handle missing file gracefully — return [] instead of raising. Implements §9.4 parsing half.
 **Prerequisite:** P1-T04 complete.
