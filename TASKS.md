@@ -131,7 +131,7 @@ Build all three parsers in dependency order. The TASKS.md parser is split across
 
 ### P2-T01 · tasks_parser.py — state machine skeleton and core field parsing
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** high
 **What:** Implement tsm/parsers/tasks_parser.py with parse_tasks_file(path: Path) -> tuple[list[PhaseOverviewRow], list[Phase]]. Build the 7-state line iterator state machine from §9.2: PREAMBLE, PHASE_STRUCTURE_TABLE, BETWEEN_PHASES, PHASE_HEADER, SUBPHASE_HEADER, TASK_BLOCK, DEP_GRAPH. Core field parsing in this task: all 6 status token variants from §4.1.3 (including emoji variants and **Active** bold-wrapped), task ID and title extraction from ### heading using the · separator, hard_deps parsing for all variants in §4.1.5 (None/None./em-dash/blank → []; comma-split otherwise), files parsing for all variants in §4.1.6 (comma-split, strip backticks, strip "(new)" suffix, "See spec" passthrough, blank → []), multiline What and Done when accumulation until next ** field label or structural boundary, raw_block capture of the full original source text for each task, DEP_GRAPH state that recognises ### Dependency graph heading, stores fenced block in Phase.dependency_graph_raw, and does not emit a Task object. Phase.id is set by calling slugify_phase_name() imported from models.py — no inline slug logic. Implements §9.2 core path and §9.5 edge cases for status/deps/files/multiline.
 **Prerequisite:** P1-T04 complete.
