@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsm"
+version = "0.1.0"
+description = "Task and Session State Manager — agentic coding workflow state management"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.60.0",
+]
+
+[project.scripts]
+tsm = "tsm.__main__:main"

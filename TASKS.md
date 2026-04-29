@@ -31,7 +31,7 @@ Establish the package skeleton, canonical data model (including LoadedProject an
 
 ### P1-T01 · Package scaffold and pyproject.toml
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Create the full package directory structure as specified in §11.1: tsm/, tsm/commands/, tsm/parsers/, tsm/writers/, tsm/ui/, tests/, tests/fixtures/, tests/parsers/, tests/writers/, tests/commands/. Create stub __init__.py files in every package directory. Create pyproject.toml with name="tsm", requires-python=">=3.11", dependencies=["textual>=0.60.0"], and entry point tsm = "tsm.__main__:main" per §11.2. Create stub tsm/__main__.py with a main() function that prints "tsm: not yet implemented" and exits. Implements §11.1 and §11.2.
 **Prerequisite:** None.
@@ -46,7 +46,7 @@ Establish the package skeleton, canonical data model (including LoadedProject an
 
 ### P1-T02 · models.py — dataclasses, enums, LoadedProject, slugify_phase_name
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/models.py with all dataclasses, enums, and helper functions defined in §5. Exactly in this order: TaskStatus enum (6 values), TaskComplexity enum (4 values), Task dataclass (14 fields in the exact field order from §5), Phase dataclass, PhaseOverviewRow dataclass, SessionState dataclass, PendingWrite dataclass, ProjectContext dataclass. Then §5.5: slugify_phase_name(name: str, existing_slugs: list[str] | None = None) -> str module-level function using the exact algorithm: lowercase → replace whitespace with hyphens → strip non-alphanumeric-non-hyphen → strip leading/trailing hyphens → collision suffix -2/-3 etc. Then §5.6: LoadedProject dataclass with fields project_context: ProjectContext, phases: list[Phase], phase_overview: list[PhaseOverviewRow], session: SessionState. Implements §5, §5.5, §5.6.
 **Prerequisite:** P1-T01 complete.
@@ -69,7 +69,7 @@ Establish the package skeleton, canonical data model (including LoadedProject an
 
 ### P1-T03 · project.py — discovery and .gitignore enforcement
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/project.py with two public functions. (1) find_project_root(start: Path) -> Path | None: walk up the directory tree from start, checking each directory for the presence of both TASKS.md and SESSIONSTATE.md; stop after checking 3 parent levels (start, start.parent, start.parent.parent, start.parent.parent.parent); return the first matching path or None. (2) ensure_tsm_dir(root: Path) -> ProjectContext: create .tsm/shadow/ and .tsm/backups/ if they do not exist; check .gitignore for .tsm/ entry and append if absent (create .gitignore if missing); print the one-time notice from §3.3 if .gitignore was modified; return a ProjectContext dataclass populated with absolute paths for all fields. Implements §3.2 and §3.3.
 **Prerequisite:** P1-T02 complete.
@@ -90,7 +90,7 @@ Establish the package skeleton, canonical data model (including LoadedProject an
 
 ### P1-T04 · Test fixtures
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Create all five test fixture files in tests/fixtures/. Each must cover the specific format variants that the parser tests depend on. TASKS.md: representative file with at least 2 phases, 6 tasks total with mixed statuses (complete, active, pending, blocked), 1 task with multi-line What field, 1 task with multi-line Done when field, 1 task with Key constraints field, 1 task without Key constraints field, 1 task with backtick-wrapped Files paths including a "(new)" suffix, 1 task with em-dash Hard deps, 1 task with "None" Hard deps, 1 task with "See spec §8" in Files, 1 ### Dependency graph block per phase. TASKS_CLEAN.md: minimal valid file, 2 tasks both pending, no errors or warnings. TASKS_ERRORS.md: file with deliberate errors — at least one duplicate task ID and at least one dangling dep reference. SESSIONSTATE.md: canonical format with populated active task, 2 up-next rows (one with Complexity column, one without), 2 completed rows, non-empty out-of-scope section. TASKS-COMPLETED.md: log with one phase section and 2 task rows. Implements §11.1 test fixtures and §12.1 fixture requirements.
 **Prerequisite:** None.

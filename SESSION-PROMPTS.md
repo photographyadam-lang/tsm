@@ -40,7 +40,7 @@ Do not write any code or create any files until you have confirmed this and I ha
 
 ---
 
-### P1-T01 — Package scaffold and pyproject.toml
+### P1-T01 — Package scaffold and pyproject.toml - done
 
 ```
 Build P1-T01 as specified.
@@ -77,7 +77,7 @@ Commit message when complete: "P1-T01: package scaffold and pyproject.toml"
 
 ---
 
-### P1-T02 — models.py
+### P1-T02 — models.py - done 
 
 ```
 Build P1-T02 as specified.
@@ -102,7 +102,7 @@ Commit message when complete: "P1-T02: models.py — all dataclasses, enums, Loa
 
 ---
 
-### P1-T03 — project.py
+### P1-T03 — project.py - done 
 
 ```
 Build P1-T03 as specified.
@@ -124,7 +124,7 @@ Commit message when complete: "P1-T03: project.py — discovery and .gitignore e
 
 ---
 
-### P1-T04 — Test fixtures
+### P1-T04 — Test fixtures - done
 
 ```
 Build P1-T04 as specified.
