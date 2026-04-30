@@ -3,7 +3,7 @@
 ---
 
 ## Active phase
-Phase 4 — Commands — in progress.
+Phase 5 — CLI Entry Point — in progress.
 Spec: `SPECIFICATION-task-session-manager-v1.4.md`
 
 ---
@@ -17,25 +17,33 @@ Spec: `SPECIFICATION-task-session-manager-v1.4.md`
 
 ## Active task
 
-### P4-T01 · commands/advance.py
+### P5-T01 · __main__.py — CLI wiring, load_project bootstrap, --yes flag, exit codes
 
 **Status:** Pending
-**Complexity:** high
-**What:** Implement tsm/commands/advance.py with advance(ctx: LoadedProject, commit_message: str = "") -> list[PendingWrite]. Precondition: ctx.session.active_task is not None; abort with clear error if not. Next task promotion logic (§7.3): from ctx.session.up_next, select the first Task whose hard_deps are all met — meaning each dep ID has status complete in ctx.phases, OR equals the task just being advanced. If no task is ready, set active_task to None and emit the warning from §7.3. Build 3 PendingWrite objects: (1) SESSIONSTATE.md — append advanced task to completed list, set new active_task_raw to promoted task's raw_block or [none], remove promoted task from up_next, update last_updated; render via session_writer; (2) TASKS.md — call update_task_status on live file content; (3) TASKS-COMPLETED.md — call append_task_row. Also implement confirm_summary(pending_writes) -> str for the §7.3 confirm output. Add HELP_TEXT static string constant with full advance help text matching the §7.8 format (Preconditions, Writes, Example sections). Implements §7.3.
-**Prerequisite:** All Phase 3 tasks complete.
-**Hard deps:** P3-T03, P3-T04, P3-T05
-**Files:** tsm/commands/advance.py, tests/commands/test_advance.py
+**Complexity:** medium
+**What:** Implement tsm/__main__.py with main() entry point and load_project(root: Path) -> LoadedProject factory function per §5.6. Parse --yes flag from argv before dispatch — pass yes=True to confirm_prompt() for write commands when present; emit "Warning: --yes has no effect on <command>." if passed to a read-only command. Implement the §10.1 exit code contract: wrap all dispatch logic in try/except; map PreconditionError → exit(1), ParseError → exit(2), WriteError → exit(3), success → exit(0); no sys.exit() call appears anywhere else in the codebase. Route all 8 subcommands. help and new-project execute without project root discovery. All other commands: call find_project_root(Path.cwd()), print the §3.2 error and exit(1) if None, call ensure_tsm_dir(root) to get ProjectContext, call load_project(root) to parse both files, dispatch to command module. Handle --help flag identically to tsm help. For write commands (advance, init_phase, complete_phase): call command function → get PendingWrite list → call shadow.confirm_prompt(pending_writes, yes=yes_flag) → if True, call shadow.apply. For read-only commands (status, vibe_check): call and print. Handle unknown subcommand: print "Unknown command: <x>" and exit(1). Implements §3.1, §5.6 construction contract, §6.2 --yes behaviour, §10.1 exit code contract, §14 CLI-first constraint.
+**Prerequisite:** All Phase 4 tasks complete.
+**Hard deps:** P4-T07
+**Files:** tsm/__main__.py, tests/test_cli.py
 **Reviewer:** Skip
 **Key constraints:**
-- advance() must return PendingWrite objects — it must not call shadow.apply() itself; the caller (CLI or TUI) applies after confirmation
-- The "just-advanced task counts as complete for dep resolution" logic lives exclusively in advance.py — not in the writer or parser
-- HELP_TEXT must be a module-level string constant, not a function or docstring
+- load_project() must be implemented here and must not be reimplemented in any command module
+- The confirm → apply flow and --yes flag must be implemented here, not inside command functions
+- sys.exit() must only be called in __main__.py — no other module may call sys.exit()
+- Exit codes must be exactly 0/1/2/3 as defined in §10.1 — no other codes used
 **Done when:**
-- test_advance_happy_path passes
-- test_advance_no_active_task passes
-- test_advance_dep_not_met passes
-- test_advance_with_commit_message passes
-- test_advance_last_task_in_phase passes
+- tsm help works when run outside any project directory and exits 0
+- tsm new-project --name "Test" works in an empty directory and exits 0
+- tsm status, tsm vibe-check, tsm advance, tsm init-phase, tsm complete-phase, tsm undo all dispatch correctly inside a valid project directory
+- tsm advance --yes against a fixture project applies without stdin prompt and exits 0
+- tsm advance against a project with no active task exits with code 1
+- tsm status against a project with a malformed TASKS.md exits with code 2
+- tsm <unknown> prints "Unknown command: <unknown>" and exits with code 1
+- tsm --help output is identical to tsm help output
+- test_confirm_prompt_yes_flag passes (inherited from P3-T01)
+- test_cli_exit_code_precondition_failure passes
+- test_cli_exit_code_parse_error passes
+- Every command works via tsm <command> without the TUI (CLI-first verification gate for Phase 6)
 
 ---
 
@@ -43,12 +51,6 @@ Spec: `SPECIFICATION-task-session-manager-v1.4.md`
 
 | Task | Description | Hard deps | Complexity | Reviewer |
 |---|---|---|---|---|
-| P4-T02 | commands/init_phase.py | P3-T04 | medium | Skip |
-| P4-T03 | commands/complete_phase.py | P3-T03, P3-T04, P3-T05 | medium | Skip |
-| P4-T04 | commands/vibe_check.py | P2-T02, P2-T03 | medium | Skip |
-| P4-T05 | commands/status.py and commands/undo.py | P3-T02, P3-T04 | low | Skip |
-| P4-T06 | commands/help.py | P4-T01, P4-T02, P4-T03, P4-T04, P4-T05 | low | Skip |
-| P4-T07 | commands/new_project.py | P2-T02, P2-T03 | medium | Skip |
 
 ---
 

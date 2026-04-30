@@ -345,7 +345,7 @@ Commit message when complete: "P3-T04: session_writer — full reconstruction re
 
 ---
 
-### P3-T05 — completed_writer.py
+### P3-T05 — completed_writer.py - done
 
 ```
 Build P3-T05 as specified.
@@ -364,7 +364,7 @@ Commit message when complete: "P3-T05: completed_writer — append writer"
 
 ---
 
-### P4-T01 — commands/advance.py
+### P4-T01 — commands/advance.py - done
 
 ```
 Build P4-T01 as specified.
@@ -387,7 +387,7 @@ Commit message when complete: "P4-T01: commands/advance — 5 tests passing"
 
 ---
 
-### P4-T02 — commands/init_phase.py
+### P4-T02 — commands/init_phase.py - done
 
 ```
 Build P4-T02 as specified.

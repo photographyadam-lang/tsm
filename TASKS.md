@@ -361,7 +361,7 @@ P2-T04 ──► P3-T05
 
 # Phase 4 — Commands
 
-**Status:** Pending
+**Status:** Active
 
 Build all 8 command modules. Every command function signature is (ctx: LoadedProject) -> list[PendingWrite], except help (no ctx, returns None) and new_project (target_dir: Path, name: str). Commands must not re-parse files — they receive a LoadedProject and work from it. Commands return PendingWrite lists; they do not call shadow.apply directly.
 
@@ -371,7 +371,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T01 · commands/advance.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** high
 **What:** Implement tsm/commands/advance.py with advance(ctx: LoadedProject, commit_message: str = "") -> list[PendingWrite]. Precondition: ctx.session.active_task is not None; abort with clear error if not. Next task promotion logic (§7.3): from ctx.session.up_next, select the first Task whose hard_deps are all met — meaning each dep ID has status complete in ctx.phases, OR equals the task just being advanced. If no task is ready, set active_task to None and emit the warning from §7.3. Build 3 PendingWrite objects: (1) SESSIONSTATE.md — append advanced task to completed list, set new active_task_raw to promoted task's raw_block or [none], remove promoted task from up_next, update last_updated; render via session_writer; (2) TASKS.md — call update_task_status on live file content; (3) TASKS-COMPLETED.md — call append_task_row. Also implement confirm_summary(pending_writes) -> str for the §7.3 confirm output. Add HELP_TEXT static string constant with full advance help text matching the §7.8 format (Preconditions, Writes, Example sections). Implements §7.3.
 **Prerequisite:** All Phase 3 tasks complete.
@@ -391,7 +391,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T02 · commands/init_phase.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/commands/init_phase.py with init_phase(ctx: LoadedProject, phase_id: str) -> list[PendingWrite]. Match phase_id case-insensitively against Phase.id slugs in ctx.phases. Precondition checks per §7.2: phase exists (abort with error if not), phase has at least one non-complete task (abort if all complete). Active task selection: first task in file order whose hard_deps list is empty or all deps are complete in ctx.phases; if no such task, active_task = [none] and print the §7.2 warning. Build 1 PendingWrite: SESSIONSTATE.md — set active_phase_name, active_task_raw, up_next (all non-active pending tasks for the phase), clear completed table, update last_updated; render via session_writer. Add HELP_TEXT static string constant. Implements §7.2.
 **Prerequisite:** P3-T04 complete.
@@ -405,7 +405,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T03 · commands/complete_phase.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/commands/complete_phase.py with complete_phase(ctx: LoadedProject) -> list[PendingWrite]. Precondition: all tasks in the current phase (matched by phase_id from ctx.session.active_phase_name) have status complete in ctx.phases; if not, abort with the §7.4 error listing incomplete task IDs. Next phase detection: iterate ctx.phases in order, find the first phase after the current one with status != complete; if none, next phase is [none]. Build 3 PendingWrite objects: (1) SESSIONSTATE.md — rotate to next phase (or [none]), set new active task, populate up_next, clear completed; (2) TASKS.md — call update_phase_status on live content targeting the completed phase's heading text; (3) TASKS-COMPLETED.md — call append_phase_marker. Add HELP_TEXT static string constant. Implements §7.4.
 **Prerequisite:** P4-T01 complete.
@@ -421,7 +421,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T04 · commands/vibe_check.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/commands/vibe_check.py with vibe_check(ctx: LoadedProject) -> None (prints directly; read-only, no PendingWrite). Implement all 13 validation rules VC-01 through VC-13 from §7.5. Rule notes: VC-11 warning fires for missing required fields (Status, Complexity, What, Prerequisite, Hard deps, Files, Reviewer, Done when) but NOT for absent Key constraints (absence is valid); VC-13 warning fires only for tasks in Active or Up next, not for completed tasks; VC-12 comparison must use datetime arithmetic, not date subtraction (7 days threshold). Output format matches the §7.5 output block exactly: header with timestamp, error count, warning count, grouped ERRORS then WARNINGS sections. Add HELP_TEXT static string constant. Implements §7.5.
 **Prerequisite:** All Phase 2 parsers complete.
@@ -443,7 +443,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T05 · commands/status.py and commands/undo.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Implement tsm/commands/status.py with status(ctx: LoadedProject) -> None — read-only, prints the §7.6 formatted output to stdout. Print Phase, Spec, Updated, Active task block (with Complexity and Hard dep status icons), Up next summary line, and Completed count. Implement tsm/commands/undo.py with undo(ctx: ProjectContext) -> None — delegates directly to shadow.undo(ctx.project_context). Add HELP_TEXT static string constant to both modules. Implements §7.6 and §7.7.
 **Prerequisite:** All Phase 3 tasks complete.
@@ -458,7 +458,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T06 · commands/help.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Implement tsm/commands/help.py with help_command(command: str | None = None) -> None — read-only, no project root required. Three variants per §7.8: (1) no arg → print the full command list in the §7.8 format; (2) specific command name → import and print that command module's HELP_TEXT constant; (3) unknown command name → print "Unknown command: <name>". The list of known commands is the hardcoded set of 8 names. HELP_TEXT in this module contains the overall tsm help header and command list. All per-command HELP_TEXT constants are defined in their respective command modules (advance.py, init_phase.py, complete_phase.py, vibe_check.py, status.py, undo.py, new_project.py) — help.py imports them at call time. Implements §7.8.
 **Prerequisite:** All other command module stubs must exist with HELP_TEXT constants defined.
@@ -476,7 +476,7 @@ Build all 8 command modules. Every command function signature is (ctx: LoadedPro
 
 ### P4-T07 · commands/new_project.py
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/commands/new_project.py with new_project(target_dir: Path, name: str | None = None) -> None. Abort conditions (§7.9): if TASKS.md or SESSIONSTATE.md already exist in target_dir, print the §7.9 error and return without creating anything. If name is None, prompt the user; default to target_dir.name if Enter is pressed with no input. Create all 5 files in target_dir using the exact template content from §7.9, substituting <Project Name> with the resolved name. Create .tsm/ directory and update .gitignore identically to first-run behavior (§3.3). Print the §7.9 post-creation output. Add HELP_TEXT static string constant. The generated TASKS.md and SESSIONSTATE.md must parse without errors via tasks_parser and session_parser (round-trip parsability). Implements §7.9.
 **Prerequisite:** P2-T02 and P2-T03 complete.
@@ -530,7 +530,7 @@ Wire all command modules through __main__.py with the load_project() bootstrap. 
 
 ### P5-T01 · __main__.py — CLI wiring, load_project bootstrap, --yes flag, exit codes
 
-**Status:** Pending
+**Status:** Active
 **Complexity:** medium
 **What:** Implement tsm/__main__.py with main() entry point and load_project(root: Path) -> LoadedProject factory function per §5.6. Parse --yes flag from argv before dispatch — pass yes=True to confirm_prompt() for write commands when present; emit "Warning: --yes has no effect on <command>." if passed to a read-only command. Implement the §10.1 exit code contract: wrap all dispatch logic in try/except; map PreconditionError → exit(1), ParseError → exit(2), WriteError → exit(3), success → exit(0); no sys.exit() call appears anywhere else in the codebase. Route all 8 subcommands. help and new-project execute without project root discovery. All other commands: call find_project_root(Path.cwd()), print the §3.2 error and exit(1) if None, call ensure_tsm_dir(root) to get ProjectContext, call load_project(root) to parse both files, dispatch to command module. Handle --help flag identically to tsm help. For write commands (advance, init_phase, complete_phase): call command function → get PendingWrite list → call shadow.confirm_prompt(pending_writes, yes=yes_flag) → if True, call shadow.apply. For read-only commands (status, vibe_check): call and print. Handle unknown subcommand: print "Unknown command: <x>" and exit(1). Implements §3.1, §5.6 construction contract, §6.2 --yes behaviour, §10.1 exit code contract, §14 CLI-first constraint.
 **Prerequisite:** All Phase 4 tasks complete.
