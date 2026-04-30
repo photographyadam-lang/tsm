@@ -254,7 +254,7 @@ Build the write infrastructure. Shadow/backup comes first so writers can stage t
 
 ### P3-T01 · shadow.py — stage, apply, backup, prune, history log
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** high
 **What:** Implement tsm/shadow.py with the core shadow write pipeline from §6. Functions needed: stage(pending_write: PendingWrite) -> None — write content to the shadow path; apply(pending_writes: list[PendingWrite]) -> None — for each PendingWrite in order: create timestamped .bak backup in backups/ using format <filename>.<YYYY-MM-DDTHH-MM>.bak (colons replaced with hyphens, seconds omitted), use os.replace() to atomically move shadow file to live path, prune backups for this filename keeping the 5 most recent by mtime (delete older ones), append entry to history.log in the pipe-delimited format from §6.4; confirm_prompt(pending_writes: list[PendingWrite], yes: bool = False) -> bool — if yes=True, print the summary block from §6.2 to stdout and return True immediately without reading stdin; if yes=False (default), print the summary block and read Y/n from stdin, returning True for Y/Enter and False for n. The yes parameter is the only way auto-confirm is triggered — never default it to True internally. Implements §6.1–§6.4 and §6.2 --yes flag behaviour.
 **Prerequisite:** P1-T03 complete.
@@ -276,7 +276,7 @@ Build the write infrastructure. Shadow/backup comes first so writers can stage t
 
 ### P3-T02 · shadow.py — undo
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Extend tsm/shadow.py with the undo() function from §6.5. Algorithm: read history.log and find the last line that does not contain [undone]; for each filename listed on that line, find the most recent .bak file in backups/ and copy it to the live path; append [undone] to the end of that log line (in-place edit of the log file). Edge cases: if history.log is empty or all entries are already marked [undone], print "Nothing to undo." and return. If undo() is called again immediately after a successful undo (i.e., there is no non-[undone] entry), print "Nothing to undo." — this is the double-undo case. Undo must not create a new backup, must not write to shadow files, and must not add a new history.log entry. Implements §6.5.
 **Prerequisite:** P3-T01 complete with all 5 shadow tests passing.
@@ -295,7 +295,7 @@ Build the write infrastructure. Shadow/backup comes first so writers can stage t
 
 ### P3-T03 · tasks_writer.py — targeted status replacement (task-level and phase-level)
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/writers/tasks_writer.py with two public functions. (1) update_task_status(content: str, task_id: str, new_status: str) -> str: scan the file content for the line matching ### <task_id> ·, then within that task block find the **Status:** line and replace only that line with the new value; return the full file content with only that one line changed. (2) update_phase_status(content: str, phase_heading_text: str, new_status: str) -> str: scan for the H1 line # <phase_heading_text>, then within the phase header block (lines between that H1 and the first --- or next #) find the **Status:** line and replace only that line; return the full file content with only that one line changed. Both functions operate on raw string content (not parsed data model) and must produce output where all bytes outside the replaced line are identical to the input. A helper write_tasks_file(content: str, shadow_path: str) -> None writes content to the shadow path. Implements §9.2 write-back strategy (both task-level and phase-level variants from the v1.3 spec update).
 **Prerequisite:** P2-T01 and P2-T02 complete.
@@ -314,7 +314,7 @@ Build the write infrastructure. Shadow/backup comes first so writers can stage t
 
 ### P3-T04 · session_writer.py — full reconstruction renderer
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** medium
 **What:** Implement tsm/writers/session_writer.py with render_sessionstate(state: SessionState) -> str. Full reconstruction per §9.3 renderer invariants: emit *Last updated: YYYY-MM-DDTHH:MM* using datetime.now() at render time (not at command invocation time); emit --- between every section; emit ## Active phase section from state.active_phase_name and state.active_phase_spec; emit ## Completed tasks as 3-column pipe-delimited table; emit ## Active task section by re-emitting state.active_task_raw verbatim (caller has already updated this field if a new task was promoted); emit ## Up next as 5-column pipe-delimited table including the Complexity column; emit ## Out of scope by re-emitting state.out_of_scope_raw verbatim. Also implement write_session_file(content: str, shadow_path: str) -> None. Implements §9.3 SESSIONSTATE.md write-back strategy.
 **Prerequisite:** P2-T03 complete.
@@ -333,7 +333,7 @@ Build the write infrastructure. Shadow/backup comes first so writers can stage t
 
 ### P3-T05 · completed_writer.py — append writer
 
-**Status:** Pending
+**Status:** ✅ Complete
 **Complexity:** low
 **What:** Implement tsm/writers/completed_writer.py with two public functions. (1) append_task_row(path: Path, shadow_path: str, phase_name: str, task_id: str, title: str, complexity: str, commit: str, notes: str) -> str: load existing file content (or create header if file missing), find the ## <phase_name> section (last occurrence), append a new table row, return the full reconstructed content string and write it to shadow_path. If the phase section does not exist, append a new ## <phase_name> section with the 5-column header row before appending the data row. (2) append_phase_marker(path: Path, shadow_path: str, phase_name: str, date: str) -> str: find the phase section and append the line **Phase complete: YYYY-MM-DD** after the last row. Both functions write to shadow_path, not to the live file. Implements §9.4 writing half.
 **Prerequisite:** P2-T04 complete.

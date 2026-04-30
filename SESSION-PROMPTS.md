@@ -204,7 +204,7 @@ Commit message when complete: "P2-T02: tasks_parser — complexity, key_constrai
 
 ---
 
-### P2-T03 — session_parser.py
+### P2-T03 — session_parser.py - done
 
 ```
 Build P2-T03 as specified.
@@ -225,7 +225,7 @@ Commit message when complete: "P2-T03: session_parser — 12 tests passing"
 
 ---
 
-### P2-T04 — completed_parser.py
+### P2-T04 — completed_parser.py - done
 
 ```
 Build P2-T04 as specified.
@@ -243,7 +243,7 @@ Commit message when complete: "P2-T04: completed_parser"
 
 ---
 
-### P3-T01 — shadow.py (stage/apply/backup/prune/history)
+### P3-T01 — shadow.py (stage/apply/backup/prune/history) - done
 
 ```
 Build P3-T01 as specified.
@@ -265,7 +265,7 @@ Commit message when complete: "P3-T01: shadow.py — stage/apply/backup/prune, 5
 
 ---
 
-### P3-T02 — shadow.py (undo)
+### P3-T02 — shadow.py (undo) - done
 
 ```
 Build P3-T02 as specified.
@@ -287,7 +287,7 @@ Commit message when complete: "P3-T02: shadow.py — undo, 8 tests passing"
 
 ---
 
-### P3-T03 — tasks_writer.py
+### P3-T03 — tasks_writer.py - done
 
 ```
 Build P3-T03 as specified.
@@ -319,7 +319,7 @@ Commit message when complete: "P3-T03: tasks_writer — task-level and phase-lev
 
 ---
 
-### P3-T04 — session_writer.py
+### P3-T04 — session_writer.py - done
 
 ```
 Build P3-T04 as specified.

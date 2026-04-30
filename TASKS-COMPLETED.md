@@ -18,3 +18,13 @@
 | P2-T02 | tasks_parser.py — complexity, key_constraints, subphase | medium | | |
 | P2-T03 | session_parser.py | medium | | |
 | P2-T04 | completed_parser.py | low | | |
+
+## Phase 3 — Shadow & Writers
+
+| Task | Description | Complexity | Commit message | Notes |
+|------|-------------|------------|----------------|-------|
+| P3-T01 | shadow.py — stage/apply/backup/prune/history | high | | |
+| P3-T02 | shadow.py — undo | medium | | |
+| P3-T03 | tasks_writer.py — targeted status replacement | medium | | |
+| P3-T04 | session_writer.py — full reconstruction renderer | medium | | |
+| P3-T05 | completed_writer.py — append writer | low | | |
