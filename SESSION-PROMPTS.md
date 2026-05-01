@@ -403,7 +403,7 @@ Commit message when complete: "P4-T02: commands/init_phase — 3 tests passing"
 
 ---
 
-### P4-T03 — commands/complete_phase.py
+### P4-T03 — commands/complete_phase.py - done
 
 ```
 Build P4-T03 as specified.
@@ -421,7 +421,7 @@ Commit message when complete: "P4-T03: commands/complete_phase — 3 tests passi
 
 ---
 
-### P4-T04 — commands/vibe_check.py
+### P4-T04 — commands/vibe_check.py - done
 
 ```
 Build P4-T04 as specified.
@@ -441,7 +441,7 @@ Commit message when complete: "P4-T04: commands/vibe_check — 11 tests passing"
 
 ---
 
-### P4-T05 — commands/status.py and commands/undo.py
+### P4-T05 — commands/status.py and commands/undo.py - done
 
 ```
 Build P4-T05 as specified.
@@ -458,7 +458,7 @@ Commit message when complete: "P4-T05: commands/status and undo"
 
 ---
 
-### P4-T06 — commands/help.py
+### P4-T06 — commands/help.py - done
 
 ```
 Build P4-T06 as specified.
@@ -476,7 +476,7 @@ Commit message when complete: "P4-T06: commands/help — 4 tests passing"
 
 ---
 
-### P4-T07 — commands/new_project.py
+### P4-T07 — commands/new_project.py - done
 
 ```
 Build P4-T07 as specified.
