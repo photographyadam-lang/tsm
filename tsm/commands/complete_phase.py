@@ -61,15 +61,27 @@ def complete_phase(ctx: LoadedProject) -> list[PendingWrite]:
     """
     # ── Find the current phase object ────────────────────────────────────
     current_phase = None
+    active_name = ctx.session.active_phase_name.strip()
+
+    # Try exact match first, then prefix match (SESSIONSTATE.md may append
+    # descriptive text like "— in progress." that is not part of the phase
+    # heading in TASKS.md).
     for phase in ctx.phases:
-        if phase.name == ctx.session.active_phase_name:
+        if phase.name == active_name:
             current_phase = phase
             break
+    if current_phase is None:
+        # Fallback: check if active_name starts with any phase name
+        for phase in ctx.phases:
+            if active_name.startswith(phase.name):
+                current_phase = phase
+                break
 
     if current_phase is None:
+        phase_names = [p.name for p in ctx.phases]
         raise ValueError(
             f"Current phase '{ctx.session.active_phase_name}' not found "
-            f"in project phases."
+            f"in project phases. Available phases: {phase_names}"
         )
 
     # ── Precondition: all tasks in current phase must be complete ────────
@@ -160,10 +172,21 @@ def complete_phase(ctx: LoadedProject) -> list[PendingWrite]:
     shadow_dir = pc.shadow_dir.rstrip("/\\")
     completed_shadow = str(Path(shadow_dir) / "TASKS-COMPLETED.md")
 
+    # Use ctx.session.active_phase_name rather than current_phase.name
+    # because advance.py uses the same value when creating phase sections
+    # in TASKS-COMPLETED.md.  If SESSIONSTATE.md has "Phase 6 — TUI — in
+    # progress." as the active phase, the TASKS-COMPLETED.md section will
+    # also be "## Phase 6 — TUI — in progress." — and we need to match
+    # that exact heading.
+    completed_phase_name = (
+        ctx.session.active_phase_name.strip()
+        or current_phase.name
+    )
+
     append_phase_marker(
         path=Path(pc.tasks_completed_path),
         shadow_path=completed_shadow,
-        phase_name=current_phase.name,
+        phase_name=completed_phase_name,
         date=today,
     )
 

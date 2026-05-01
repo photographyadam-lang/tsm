@@ -283,7 +283,8 @@ class TestAdvanceLastTaskInPhase:
     """``advance()`` when this is the last task in the phase (no more up_next)."""
 
     def test_advance_last_task_in_phase(self, tmp_path: Path):
-        """No remaining up_next tasks → active_task set to [none]."""
+        """No remaining up_next tasks → active_task set to [none],
+        end-of-phase message printed."""
         ctx = _build_fixture_loaded_project(tmp_path)
 
         # Set up_next to empty list
@@ -314,6 +315,126 @@ class TestAdvanceLastTaskInPhase:
             # The next ## or end-of-string
             next_section = after_heading.split("##")[0] if "##" in after_heading else after_heading
             assert "[none]" in next_section
+
+        # Summary should say "All tasks in up_next processed"
+        session_summary = session_pw.summary_lines
+        assert any(
+            "All tasks in up_next processed" in line
+            for line in session_summary
+        )
+
+
+class TestAdvanceActiveTaskInUpNext:
+    """``advance()`` when the active task is also present in up_next
+    (session state corruption — should be handled defensively)."""
+
+    def test_advance_active_task_in_up_next(self, tmp_path: Path):
+        """Active task appears in up_next → should be filtered out,
+        not promoted as the next task."""
+        ctx = _build_fixture_loaded_project(tmp_path)
+
+        active_task = ctx.session.active_task
+        assert active_task is not None
+        assert active_task.id == "FA-T02"
+
+        # Corrupt the session: add the active task to up_next
+        corrupted_up_next = list(ctx.session.up_next) + [active_task]
+
+        ctx.session = SessionState(
+            last_updated=ctx.session.last_updated,
+            active_phase_name=ctx.session.active_phase_name,
+            active_phase_spec=ctx.session.active_phase_spec,
+            active_task=active_task,
+            active_task_raw=ctx.session.active_task_raw,
+            up_next=corrupted_up_next,
+            completed=ctx.session.completed,
+            out_of_scope_raw=ctx.session.out_of_scope_raw,
+        )
+
+        result = advance(ctx)
+
+        assert len(result) == 3
+
+        # The promoted task should NOT be FA-T02 (the active task)
+        # It should be FA-T03 (the first real candidate in up_next)
+        session_pw = next(
+            pw for pw in result if pw.target_file == "SESSIONSTATE.md"
+        )
+        content = Path(session_pw.shadow_path).read_text(encoding="utf-8")
+
+        # FA-T02 should be in completed, FA-T03 should be the active task
+        # NOTE: When advance promotes a new task, it uses the task's raw_block
+        # from TASKS.md parser (### heading only, no ## Active task heading),
+        # so we search for the ### task heading directly.
+        assert "FA-T02" in content.split("## Completed tasks")[1].split("##")[0]
+        # FA-T03 should appear as the active task (its ### heading in the
+        # Active task section — between Completed tasks and Up next)
+        between_completed_and_up_next = content.split("## Completed tasks")[1].split("## Up next")[0]
+        assert "### FA-T03" in between_completed_and_up_next
+        # FA-T02 should NOT be the active task
+        assert "### FA-T02" not in between_completed_and_up_next
+
+        # FA-T03 should NOT be in up_next
+        up_next_section = content.split("## Up next")[1].split("##")[0]
+        assert "FA-T03" not in up_next_section
+
+        # Summary should show FA-T03 as promoted
+        assert any(
+            "Promote FA-T03" in line
+            for line in session_pw.summary_lines
+        )
+
+
+class TestAdvanceActiveTaskOnlyInUpNext:
+    """``advance()`` when the *only* entry in up_next is the active
+    task itself (worst-case corruption)."""
+
+    def test_advance_active_task_only_in_up_next(self, tmp_path: Path):
+        """Only the active task appears in up_next → filtered out,
+        treated as last-task-in-phase."""
+        ctx = _build_fixture_loaded_project(tmp_path)
+
+        active_task = ctx.session.active_task
+        assert active_task is not None
+        assert active_task.id == "FA-T02"
+
+        # Corrupt the session: up_next contains ONLY the active task
+        ctx.session = SessionState(
+            last_updated=ctx.session.last_updated,
+            active_phase_name=ctx.session.active_phase_name,
+            active_phase_spec=ctx.session.active_phase_spec,
+            active_task=active_task,
+            active_task_raw=ctx.session.active_task_raw,
+            up_next=[active_task],
+            completed=ctx.session.completed,
+            out_of_scope_raw=ctx.session.out_of_scope_raw,
+        )
+
+        result = advance(ctx)
+
+        assert len(result) == 3
+
+        session_pw = next(
+            pw for pw in result if pw.target_file == "SESSIONSTATE.md"
+        )
+        content = Path(session_pw.shadow_path).read_text(encoding="utf-8")
+
+        # Active task should be set to [none] (nothing to promote)
+        if "## Active task" in content:
+            after_heading = content.split("## Active task")[1]
+            next_section = after_heading.split("##")[0] if "##" in after_heading else after_heading
+            assert "[none]" in next_section
+
+        # Summary should say "All tasks in up_next processed"
+        assert any(
+            "All tasks in up_next processed" in line
+            for line in session_pw.summary_lines
+        )
+
+        # Up next section should be empty (no data rows)
+        up_next_section = content.split("## Up next")[1].split("##")[0]
+        # Should have table headers but no FA-T02 data row
+        assert "FA-T02" not in up_next_section
 
 
 # ── Utility tests ────────────────────────────────────────────────────────────

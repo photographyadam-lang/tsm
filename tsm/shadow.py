@@ -180,8 +180,15 @@ def confirm_prompt(
     if yes:
         return True
 
+    # NOTE: On Windows (PowerShell/CMD), Python's input("prompt") may not
+    # reliably flush the prompt string to stdout before blocking on stdin,
+    # causing a hang.  We work around this by printing the prompt explicitly
+    # with flush=True, then calling input() with no argument.  This ensures
+    # the prompt is visible before Python attempts to read from stdin.
+    # See TSM #stdin-hang-on-windows.
     try:
-        response = input("  Apply changes? [Y/n]: ")
+        print("  Apply changes? [Y/n]: ", end="", flush=True)
+        response = input()
     except (EOFError, KeyboardInterrupt):
         return False
 

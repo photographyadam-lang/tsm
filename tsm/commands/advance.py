@@ -70,8 +70,13 @@ def advance(
     tasks_content = Path(pc.tasks_path).read_text(encoding="utf-8")
 
     # ── Promote next task from up_next ───────────────────────────────────
+    # Defensive: ensure the active task isn't in up_next (shouldn't happen
+    # in a clean session, but guards against session state corruption where
+    # the active task appears in both ## Active task and ## Up next).
+    filtered_up_next = [t for t in ctx.session.up_next if t.id != active_task.id]
+
     promoted_candidate = _find_next_ready_task(
-        ctx.session.up_next, active_task.id, ctx.phases
+        filtered_up_next, active_task.id, ctx.phases
     )
 
     # When promoting from up_next, the task object from the session parser
@@ -105,10 +110,13 @@ def advance(
     # Build updated completed list (append the advanced task)
     new_completed = list(ctx.session.completed) + [completed_entry]
 
-    # Build updated up_next (remove the promoted task if found)
+    # Build updated up_next (remove the promoted task if found, then
+    # defensively strip the active task too).
     new_up_next = list(ctx.session.up_next)
     if promoted_task is not None:
         new_up_next = [t for t in new_up_next if t.id != promoted_task.id]
+    # Defensive: ensure the active task never lingers in up_next
+    new_up_next = [t for t in new_up_next if t.id != active_task.id]
 
     # Build new active_task / active_task_raw
     if promoted_task is not None:
@@ -117,10 +125,20 @@ def advance(
     else:
         new_active_task = None
         new_active_task_raw = "[none]"
-        print(
-            "Warning: No task in up_next has all hard deps met. "
-            "active_task set to [none]."
-        )
+
+        if not filtered_up_next:
+            # No more tasks remain in up_next — this was the last task
+            # in the phase's current work queue.
+            print(
+                "The last task in this phase has been advanced. "
+                "Use 'tsm complete-phase' to mark the phase as complete "
+                "and rotate to the next phase."
+            )
+        else:
+            print(
+                "Warning: No task in up_next has all hard deps met. "
+                "active_task set to [none]."
+            )
 
     # ── Build updated SessionState for SESSIONSTATE.md ───────────────────
     new_session = SessionState(
@@ -174,8 +192,14 @@ def advance(
         summary_lines_session.append(
             f"Promote {promoted_task.id} as new active task"
         )
+    elif not filtered_up_next:
+        summary_lines_session.append(
+            "All tasks in up_next processed — active_task set to [none]"
+        )
     else:
-        summary_lines_session.append("No ready task in up_next — active_task set to [none]")
+        summary_lines_session.append(
+            "No ready task in up_next — active_task set to [none]"
+        )
 
     pending_writes = [
         PendingWrite(

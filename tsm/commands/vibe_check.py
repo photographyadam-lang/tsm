@@ -3,6 +3,7 @@
 # Implements §7.5 vibe-check logic (13 validation rules VC-01 through VC-13).
 #
 # Public API:
+#   run_vibe_check(ctx: LoadedProject) -> tuple[list[str], list[str], str]
 #   vibe_check(ctx: LoadedProject) -> None
 #   HELP_TEXT: str
 #
@@ -31,11 +32,18 @@ from tsm.models import (
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def vibe_check(ctx: LoadedProject) -> None:
-    """Run all 13 validation rules and print results to stdout.
+def run_vibe_check(
+    ctx: LoadedProject,
+) -> tuple[list[str], list[str], str]:
+    """Run all 13 validation rules and return structured results.
 
     Args:
         ctx: The loaded project state.
+
+    Returns:
+        A tuple ``(errors, warnings, timestamp_str)`` where ``errors`` and
+        ``warnings`` are lists of formatted message strings suitable for
+        display in either the CLI or the TUI.
     """
     errors: list[str] = []
     warnings: list[str] = []
@@ -226,7 +234,16 @@ def vibe_check(ctx: LoadedProject) -> None:
                 f"model not yet assessed"
             )
 
-    # ── Output ────────────────────────────────────────────────────────────
+    return errors, warnings, timestamp_str
+
+
+def vibe_check(ctx: LoadedProject) -> None:
+    """Run all 13 validation rules and print results to stdout.
+
+    Args:
+        ctx: The loaded project state.
+    """
+    errors, warnings, timestamp_str = run_vibe_check(ctx)
     _print_report(errors, warnings, timestamp_str)
 
 

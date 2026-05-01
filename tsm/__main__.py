@@ -111,14 +111,18 @@ def main() -> None:
     """
     try:
         _dispatch()
-    except PreconditionError:
+    except PreconditionError as exc:
+        print(f"❌ {exc}", file=sys.stderr)
         sys.exit(1)
-    except ParseError:
+    except ParseError as exc:
+        print(f"❌ Parse error: {exc}", file=sys.stderr)
         sys.exit(2)
-    except WriteError:
+    except WriteError as exc:
+        print(f"❌ Write error: {exc}", file=sys.stderr)
         sys.exit(3)
-    except TsmError:
+    except TsmError as exc:
         # Generic tsm error → exit 1 (precondition-like)
+        print(f"❌ {exc}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -135,8 +139,24 @@ def _dispatch() -> None:
     yes_flag = "--yes" in args
     args = [a for a in args if a != "--yes"]
 
-    # ── No subcommand → show help ────────────────────────────────────────
+    # ── No subcommand → launch TUI if in a project root (§8.1) ──────────
     if not args:
+        root = find_project_root(Path.cwd())
+        if root is not None:
+            from tsm.app import TsmApp
+
+            try:
+                loaded = load_project(root)
+            except (ParseError, Exception) as exc:
+                print(f"❌ Could not load project: {exc}")
+                sys.exit(2)
+            try:
+                TsmApp(loaded).run()
+            except Exception as exc:
+                print(f"❌ TUI error: {exc}")
+                sys.exit(1)
+            return
+        # Not in a project root → show help
         _run_help_command(None)
         return
 
@@ -265,6 +285,11 @@ def _handle_write_command(
     if confirm_prompt(pending_writes, yes=yes_flag):
         try:
             apply(pending_writes)
+            print("✅ Changes applied successfully:")
+            for pw in pending_writes:
+                print(f"   • {pw.target_file}:")
+                for line in pw.summary_lines:
+                    print(f"     {line}")
         except Exception as exc:
             raise WriteError(str(exc)) from exc
 
