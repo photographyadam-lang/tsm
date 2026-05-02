@@ -48,7 +48,7 @@ class WriteError(TsmError):
 _WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase"})
 
 # Read-only commands (print to stdout, no PendingWrite)
-_READ_COMMANDS = frozenset({"status", "vibe-check", "undo"})
+_READ_COMMANDS = frozenset({"status", "vibe-check", "undo", "deps"})
 
 # No-root commands (do not need project discovery)
 _NO_ROOT_COMMANDS = frozenset({"help", "new-project"})
@@ -205,7 +205,7 @@ def _dispatch() -> None:
     if command in _READ_COMMANDS:
         if yes_flag:
             print(f"Warning: --yes has no effect on {command}.")
-        _handle_read_command(command, loaded)
+        _handle_read_command(command, loaded, rest)
         return
 
 
@@ -294,8 +294,8 @@ def _handle_write_command(
             raise WriteError(str(exc)) from exc
 
 
-def _handle_read_command(command: str, loaded: LoadedProject) -> None:
-    """Dispatch a read-only command (status, vibe-check, undo)."""
+def _handle_read_command(command: str, loaded: LoadedProject, rest: list[str]) -> None:
+    """Dispatch a read-only command (status, vibe-check, undo, deps)."""
     if command == "status":
         from tsm.commands.status import status
 
@@ -308,6 +308,29 @@ def _handle_read_command(command: str, loaded: LoadedProject) -> None:
         from tsm.commands.undo import undo
 
         undo(loaded.project_context)
+    elif command == "deps":
+        from tsm.commands.deps import deps_command
+
+        # Parse deps arguments
+        task_id: str | None = None
+        tree = False
+        blocked = False
+        check = False
+
+        for arg in rest:
+            if arg == "--tree":
+                tree = True
+            elif arg == "--blocked":
+                blocked = True
+            elif arg == "--check":
+                check = True
+            elif arg.startswith("-"):
+                print(f"Unknown flag: {arg}")
+                return
+            else:
+                task_id = arg
+
+        deps_command(loaded, task_id=task_id, tree=tree, blocked=blocked, check=check)
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
