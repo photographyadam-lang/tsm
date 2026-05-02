@@ -24,7 +24,7 @@ git init
 
 ## Step 2 — Place the project files
 
-Copy these five files into the root of the `tsm/` directory:
+Copy these files into the root of the `tsm/` directory:
 
 | File | Source |
 |------|--------|
@@ -32,7 +32,7 @@ Copy these five files into the root of the `tsm/` directory:
 | `SESSIONSTATE.md` | From this output package |
 | `TASKS-COMPLETED.md` | From this output package |
 | `AGENTS.md` | From this output package |
-| `SPECIFICATION-task-session-manager-v1.3.md` | From this output package |
+| `SPECIFICATION-task-session-manager-v1.6.md` | From this output package |
 
 Your directory should look like:
 
@@ -40,17 +40,21 @@ Your directory should look like:
 tsm/
   AGENTS.md
   SESSIONSTATE.md
-  SPECIFICATION-task-session-manager-v1.3.md
+  SPECIFICATION-task-session-manager-v1.6.md
   TASKS-COMPLETED.md
   TASKS.md
 ```
 
 ---
 
-## Step 3 — Create a .gitignore
+## Step 3 — Create a .gitattributes and .gitignore
 
-Create `tsm/.gitignore` with this content:
+**.gitattributes** (normalizes line endings across Windows/Linux/Mac):
+```
+* text=auto eol=lf
+```
 
+**.gitignore:**
 ```
 .tsm/
 __pycache__/
@@ -61,7 +65,7 @@ dist/
 .pytest_cache/
 ```
 
-The `.tsm/` entry is what tsm itself will check for on first run. Including it now means the first-run notice won't fire.
+The `.tsm/` entry is what tsm itself will check for on first run.
 
 ---
 
@@ -79,12 +83,12 @@ This is your clean starting checkpoint. You can always return here.
 ## Step 5 — Verify SESSIONSTATE.md is correct
 
 Open `SESSIONSTATE.md` and confirm:
-- `## Active phase` is `Phase 1 — Foundation — in progress.`
-- `## Active task` shows `P1-T01 · Package scaffold and pyproject.toml`
-- `## Up next` has P1-T02, P1-T03, P1-T04
+- `## Active phase` matches the phase you are starting
+- `## Active task` shows the first task for that phase
 - `## Completed tasks` table is empty
+- `## Up next` contains the remaining tasks for the phase
 
-If anything looks wrong, do not start a session — fix the state file first.
+If anything looks wrong, fix the state file before starting a session.
 
 ---
 
@@ -96,7 +100,7 @@ Wait for the agent to confirm orientation before sending the build prompt.
 
 ---
 
-## How the workflow runs from here
+## How the workflow runs
 
 Each coding session follows this cycle:
 
@@ -107,90 +111,107 @@ Each coding session follows this cycle:
 4. You paste BUILD PROMPT for that task
 5. Agent builds + tests
 6. Agent reports completion
-7. You manually advance SESSIONSTATE.md (until tsm itself is built):
+7. Advance state (manually until Phase 5, then via tsm advance):
    - Move active task to ## Completed tasks table
    - Set next task as ## Active task
    - Remove it from ## Up next
    - Update *Last updated:* timestamp
    - Update **Status:** in TASKS.md: Pending → ✅ Complete
    - Append row to TASKS-COMPLETED.md
-8. New git commit: "P1-T01: package scaffold complete"
+8. git commit -m "P1-T01: package scaffold complete"
 9. Repeat
 ```
 
-Once Phase 5 is complete and `tsm` itself is working, you switch to using `tsm advance` instead of step 7.
+Once Phase 5 is complete and `tsm` is installed, use `tsm advance` instead of step 7.
 
 ---
 
-## Manually advancing SESSIONSTATE.md (Phase 1–5)
-
-Until `tsm advance` exists, advance the state by hand after each completed task.
+## Manually advancing SESSIONSTATE.md
 
 **What to change in SESSIONSTATE.md:**
 
-1. Move the active task row to `## Completed tasks`:
+1. Add the completed task to `## Completed tasks`:
    ```
    | P1-T01 | Package scaffold and pyproject.toml | chore: scaffold |
    ```
 
-2. Update `## Active task` to the next task's full block (copy from TASKS.md)
+2. Update `## Active task` to the next task's full block (copy verbatim from TASKS.md)
 
 3. Remove that task from `## Up next`
 
-4. Update `*Last updated:*` to current datetime
+4. Update `*Last updated:*` to current datetime in `YYYY-MM-DDTHH:MM` format
 
 **What to change in TASKS.md:**
 
-Find the completed task's `**Status:**` line and change it:
-```
-**Status:** ✅ Complete
-```
-Only this line. Nothing else.
+Find the completed task's `**Status:**` line and change it to `✅ Complete`. Only this line — nothing else.
 
 **What to append to TASKS-COMPLETED.md:**
 
 ```markdown
 ## Phase 1 — Foundation
 
-**Completed: 2026-04-23T10:00**
-
 | Task | Description | Complexity | Commit message | Notes |
 |------|-------------|------------|----------------|-------|
 | P1-T01 | Package scaffold and pyproject.toml | low | chore: scaffold | |
 ```
 
-If the phase section already exists, just append the row — don't duplicate the section header.
+If the phase section already exists, append only the new row — never duplicate the section header.
 
 ---
 
 ## Dependency order quick reference
 
-Tasks within a phase can sometimes run in parallel. Here's what can start as soon as what:
+### Phases 1–6
 
 **Phase 1:**
 - P1-T01 → start immediately
 - P1-T02 → after P1-T01
 - P1-T03 → after P1-T02
-- P1-T04 → after P1-T01 (can run parallel to P1-T02)
+- P1-T04 → after P1-T01 (parallel with P1-T02)
 
-**Phase 2:** All four tasks need P1-T02 + P1-T04. P2-T01 must complete before P2-T02.
+**Phase 2:** All tasks need P1-T02 + P1-T04. P2-T01 must finish before P2-T02. P2-T03 and P2-T04 can run parallel to P2-T01/T02.
 
-**Phase 3:** Each writer depends on its corresponding parser completing first.
+**Phase 3:** Each writer depends on its corresponding parser. P3-T01 and P3-T03 can run in parallel.
 
-**Phase 4:** All command tasks need all of Phase 3. P4-T06 (help) needs all other command stubs.
+**Phase 4:** All command tasks need all of Phase 3. P4-T06 (help) needs all other command stubs to exist first.
 
 **Phase 5:** Needs all of Phase 4.
 
-**Phase 6:** Needs Phase 5. Build strictly in sub-order: T01 → T02 → T03, T04 → T05.
+**Phase 6:** Needs Phase 5. Build strictly in order: T01 → T02 → T03/T04 (parallel) → T05.
+
+### Phase 7
+
+**Gate:** P7-T01 (deps.py) must pass all tests before any other Phase 7 task starts.
+
+```
+P7-T01 ──► P7-T02 (deps command)
+P7-T01 ──► P7-T03a (writer: insert/remove/field-replace)
+P7-T03a ──► P7-T03b (writer: reorder)
+P7-T03b ──► P7-T04 (phase CRUD)
+P7-T03b ──► P7-T05 (task CRUD)
+P6-T05 ──► P7-T06 (TaskFormOverlay — needs TUI infrastructure)
+P7-T01 ──► P7-T07 (repair)
+P7-T01 ──► P7-T08 (sync)
+P7-T03a ──► P7-T09 (import — needs writer functions for serialization)
+```
+
+P7-T07, P7-T08, and P7-T09 can run in parallel once their deps are met.
 
 ---
 
 ## When something goes wrong
 
-**Agent produces plausible-looking code that doesn't work:** Treat all agent output as requiring verification. Run the named tests from `Done when:` before marking anything complete.
+**Agent produces code that doesn't work:** Run the named tests from `Done when:` before marking anything complete. The tests are the gate, not the agent's report.
 
-**Task is larger than expected:** It is fine to stop mid-task, commit what's done, and continue in a new session. Update `SESSIONSTATE.md` `*Last updated:*` but do not mark the task complete until all `Done when:` criteria pass.
+**Task is larger than expected:** Stop mid-task, commit what's done, and continue in a new session. Update `*Last updated:*` in SESSIONSTATE.md but do not mark the task complete until all `Done when:` criteria pass.
 
-**You need to re-run a session from scratch:** The git history is your checkpoint. `git stash` or `git checkout` to the last clean commit, then start a new Claude Code session.
+**Need to restart a session:** `git stash` or `git checkout` to the last clean commit, then open a new Claude Code session.
 
-**Parser tests fail after adding complexity/key_constraints (P2-T02):** All 21 P2-T01 tests must continue to pass. If any regress, fix before proceeding — the P2-T02 task explicitly requires this.
+**Phase 7 dep gate blocks a remove operation:** This is by design. Either resolve the dependency first, or use `--force` if you accept the dangling dep warning.
+
+**`tsm import` fails with no API key:** Create `.tsm/config.toml` with:
+```toml
+[import]
+api_key = "sk-ant-..."
+```
+This file is gitignored automatically.

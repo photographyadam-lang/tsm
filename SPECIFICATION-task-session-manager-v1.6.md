@@ -1,26 +1,14 @@
 # Task and Session State Manager — Technical Specification
 
-**Version:** 1.4
-**Date:** 2026-04-26
-**Purpose:** Personal tool. A terminal UI application for managing agentic coding workflow state across projects.
-**Language:** Python 3.11+
-**TUI Framework:** Textual
+**Version:** 1.6
+**Date:** 2026-04-30
 
-**Changelog from v1.3:**
-- §2.1 — Added `--yes` flag (auto-confirm for agent/CI invocation) to in-scope list
-- §2.2 — Added `--output json` on read-only commands to deferred v2 list
-- §6.2 — Added `--yes` flag behaviour to confirm prompt specification
-- §7.1 — Added global options table documenting `--yes`
-- §10 — Replaced implicit exit codes with a defined 4-code exit code contract
-- §12.5 — Added 2 new shadow/CLI tests for `--yes` and exit code behaviour
-- §14 — Added `--yes` flag and exit code constraints
-
-**Changelog from v1.2:**
-- §5.5 — Added `slugify_phase_name()` specification (moved from §14; was implicit)
-- §5.6 — Added `LoadedProject` dataclass (new; required by all command functions)
-- §9.2 — Added explicit phase-level status write-back specification (was missing; required by `complete-phase`)
-- §9.2 — Added dual write-strategy constraint callout box
-- §14 — Slug generation now cross-references §5.5 instead of being defined inline
+| Version | Key changes |
+|---------|-------------|
+| 1.6 | §4.2.1 active task format corrected to match raw_block reality; §7.8 help output updated for Phase 7 commands; §9.4a multi-line targeted replacement algorithm added; §15.1.2 import JSON schema and prompt template added; §15.4 repair duplicate resolution flow clarified; §15.5 sync cross-phase edge cases specified; §16.1 pre-write gate timing clarified (proposed state); §12.7 three missing tests added; §14 tsm deps bare invocation documented |
+| 1.5 | Phase 7 commands added: import, phase/task CRUD, repair, sync, deps; dependency engine (§16); LLM opt-in constraint updated |
+| 1.4 | `--yes` flag; 4-code exit contract; `LoadedProject`; `slugify_phase_name()`; phase-level write-back; dual write-strategy constraint |
+| 1.3 | `LoadedProject`; `slugify_phase_name()` moved to §5; phase-level status write-back; dual write-strategy constraint box |
 
 ---
 
@@ -59,15 +47,18 @@ All file writes go to a **shadow directory** first. The user reviews a plain-lan
 - `new-project` command to scaffold blank workflow files in a new directory
 - Task complexity field (`high | medium | low | unset`) on tasks and in session state
 - `--yes` flag on all write commands: auto-confirms without interactive prompt, for agent/CI invocation
+- **Phase 7 — Management & Integrity commands:** `tsm import`, `tsm phase <subcommand>`, `tsm task <subcommand>`, `tsm repair`, `tsm sync`, `tsm deps`
+- LLM calls are permitted in `tsm import` only — all other commands remain fully deterministic
 
 ### 2.2 Out of Scope — v1.0 (deferred)
 
 - Template generation for LLM file population
 - Full side-by-side diff view (replaced by summary-with-prompt in v1.0)
 - Multi-project switcher UI (rely on `cd` + invocation)
-- Network calls, LLM calls, telemetry of any kind
 - GUI / web interface
 - `--output json` flag on read-only commands (`status`, `vibe-check`) — deferred to v2
+- Multi-level undo — deferred to v2
+- Graphical dependency visualisation (SVG/HTML export) — deferred to v2
 
 ---
 
@@ -310,15 +301,18 @@ Spec: `<spec file>`
 
 ## Active task
 
-**<task-id> — <task title>**
-
-- Complexity: <high | medium | low | unset>
-- Files: <file list>
-- Hard deps: <dep list>
-- Reviewer: <reviewer>
-- Key constraints:
-  - <constraint>
-  - <constraint>
+### <task-id> · <task title>
+**Status:** <status>
+**Complexity:** <high | medium | low | unset>
+**What:** <description>
+**Prerequisite:** <prerequisite>
+**Hard deps:** <deps>
+**Files:** <files>
+**Reviewer:** <reviewer>
+**Key constraints:**
+- <constraint — omit this section entirely if no constraints>
+**Done when:**
+<acceptance criteria>
 
 ---
 
@@ -335,7 +329,7 @@ Spec: `<spec file>`
 - <item>
 ```
 
-The `## Active task` block is a verbatim copy of `Task.raw_block` from TASKS.md. The `- Key constraints:` bullet list appears only when the source task block contains a `**Key constraints:**` field. If the task has no key constraints, that field is absent in both TASKS.md and the `## Active task` block — there is no placeholder.
+The `## Active task` block is a **verbatim copy of `Task.raw_block`** from TASKS.md — it is the complete `### ID · title` block with all `**Field:**` lines exactly as they appear in the source file. It is never summarised, reformatted, or converted to bullet-list format. The `- Key constraints:` section appears only if the source task block has a `**Key constraints:**` field; it is absent entirely otherwise.
 
 #### 4.2.2 Section parsing rules
 
@@ -663,6 +657,12 @@ Undo does not create a new backup and does not touch shadow files.
 | `status` | Print current session state (read-only) |
 | `help [command]` | Show help for all commands, or detailed help for a specific command |
 | `new-project [--name <n>]` | Scaffold blank workflow files in the current directory |
+| `import [--tasks <f>] [--session <f>]` | LLM-assisted normalization of existing files into tsm format |
+| `phase <add\|edit\|move\|remove>` | Add, edit, reorder, or remove a phase |
+| `task <add\|edit\|move\|remove>` | Add, edit, reorder, or remove a task |
+| `repair [--tasks] [--session] [--completed]` | Repair malformed or out-of-sync files |
+| `sync --from <task-id>` | Rebuild all files to reflect a specific task as the current active task |
+| `deps [<task-id>] [--tree] [--blocked] [--check]` | Query and visualise task dependencies |
 
 All commands work both from the TUI (keybinding) and as CLI subcommands (`tsm <command>`).
 
@@ -670,10 +670,10 @@ All commands work both from the TUI (keybinding) and as CLI subcommands (`tsm <c
 
 | Flag | Applies to | Behaviour |
 |------|-----------|-----------|
-| `--yes` | All write commands (`advance`, `init-phase`, `complete-phase`) | Auto-confirm: print change summary, skip interactive prompt, apply immediately. For agent/CI use. |
+| `--yes` | All write commands | Auto-confirm: print change summary, skip interactive prompt, apply immediately. For agent/CI use. |
 | `--help` | Top-level only | Identical to `tsm help` |
 
-`--yes` is not valid on read-only commands (`status`, `vibe-check`, `undo`, `help`, `new-project`). Passing it to a read-only command prints: `Warning: --yes has no effect on <command>.` and proceeds normally.
+`--yes` is not valid on read-only commands. Passing it to a read-only command prints: `Warning: --yes has no effect on <command>.` and proceeds normally.
 
 ---
 
@@ -916,6 +916,12 @@ Commands:
   undo                     Revert the most recent apply operation
   new-project [--name]     Scaffold blank workflow files in the current directory
   help [command]           Show this help, or detail for a specific command
+  import [--tasks] [--session]  LLM-assisted normalization of existing files
+  phase <add|edit|move|remove>  Add, edit, reorder, or remove a phase
+  task <add|edit|move|remove>   Add, edit, reorder, or remove a task
+  repair                   Repair malformed or out-of-sync files
+  sync --from <task-id>    Rebuild all files to reflect a task as active
+  deps [<task-id>|--tree|--blocked|--check]  Query task dependencies
 
 Run 'tsm help <command>' for full usage of any command.
 ```
@@ -1333,6 +1339,24 @@ Writing: append-only.
 3. Append the new data row
 4. Write full reconstructed file content to shadow path
 
+### 9.4a Multi-line field targeted replacement
+
+`tsm task edit` needs to update fields that span multiple lines (e.g. `**What:**`, `**Done when:**`, `**Key constraints:**`). The single-line replacement used for `**Status:**` is insufficient.
+
+**Algorithm for `update_task_field(content: str, task_id: str, field_name: str, new_value: str) -> str`:**
+
+1. Locate the task block: scan for `### <task_id> ·` heading line; record its start position.
+2. Locate the field within the block: scan forward for the line `**<field_name>:**`.
+3. Determine the field's extent: continue scanning lines after the field label until the next line that either (a) starts with `**` (next field label), (b) is a structural boundary (`###`, `##`, `#`, `---`), or (c) is end of file. This is the multi-line value region.
+4. Replace the field label line and all value lines with the new field label line + new value lines.
+5. Return the full file content with only that region changed.
+
+**Special handling for `**Key constraints:**`:**
+- If `new_value` is empty/blank and the field currently exists → remove the entire `**Key constraints:**` block (label + bullet lines).
+- If `new_value` is non-empty and the field does not currently exist → insert it before the `**Done when:**` line.
+
+**This function is defined in `tasks_writer.py`.** It is distinct from `update_task_status()` and `update_phase_status()` which handle single-line replacements only. `task edit` calls `update_task_field()` for all fields except `status` (which still uses `update_task_status()`).
+
 ### 9.5 Edge cases that must be handled
 
 | Variant | File | Handling |
@@ -1654,17 +1678,469 @@ Build in this exact order. Each step must have passing tests before the next beg
 ## 14. Known Constraints and Explicit Non-Requirements
 
 - **No telemetry or network calls.** No data leaves the machine under any circumstance.
-- **No LLM calls.** All logic is fully deterministic.
+- **LLM calls are permitted in `tsm import` only.** All other commands are fully deterministic. `tsm import` requires an explicit API key in `.tsm/config.toml` — it never reads environment variables or system keychains. If the key is absent, `tsm import` exits with code 1 and a clear message. No other command may make LLM or network calls under any circumstance.
 - **CLI-first.** Every command must work without the TUI. The TUI is a convenience wrapper.
 - **Single-level undo only.** Multi-level undo deferred to v2.
-- **Dependency graph is display/preservation only in v1.0.** Vibe check does not validate graph edges against `**Hard deps:**` field values (v2 enhancement).
-- **Complexity is informational only.** tsm never acts on it automatically (no routing, no blocking, no model calls). It is surfaced in the TUI, `status` output, and `## Active task` block so you see it at session start.
-- **Timestamp format is `YYYY-MM-DDTHH:MM`.** Seconds are omitted. Files written by older versions of tsm using date-only format (`YYYY-MM-DD`) are accepted and silently upgraded on next write.
-- **`help` and `new-project` do not require a project root.** All other commands do.
-- **Textual version pinning.** Pin `textual>=0.60.0`. Test against the pinned version.
-- **Phase ID slugification.** Implemented as `slugify_phase_name()` in `models.py` — see §5.5. The parser calls this function for every phase; do not reimplement the logic inline.
-- **TASKS.md write constraint.** tsm only modifies `**Status:**` lines in TASKS.md — at both the task level (via `update_task_status`) and the phase level (via `update_phase_status`). It never rewrites, reformats, or regenerates any other part of the file. The dependency graph ASCII art and all task block content are preserved byte-for-byte. See §9.2 for the dual write-strategy constraint.
-- **LoadedProject construction.** Built once in `__main__.py` via `load_project()`. Commands must not re-parse files. See §5.6.
-- **`--yes` flag is parsed in `__main__.py` only.** No command module receives or is aware of this flag. `confirm_prompt(pending_writes, yes: bool)` is the single call site. Defaulting `yes=True` anywhere other than an explicit `--yes` CLI argument is a bug.
-- **Exit code contract is enforced in `__main__.py` only.** Command modules raise exceptions; `__main__.py` catches and maps to codes 0–3. See §10.1. No `sys.exit()` calls anywhere else in the codebase.
+- **Dependency graph ASCII art blocks are preserved verbatim** — the `### Dependency graph` fenced blocks in TASKS.md are never regenerated or modified by any command. They are display artifacts. The live dependency data is always read from `**Hard deps:**` fields. The `deps` command derives its output from `Hard deps:` fields, not from the ASCII art blocks.
+- **Dependency engine is a pre-write gate on all Phase 7 write commands.** Any command that adds, edits, moves, or removes a task or phase runs `check_deps()` before staging writes. If blocking dependencies are detected, the command aborts with exit code 1 and prints the dependency tree for the affected task(s). The `--force` flag bypasses this gate only for `phase remove` and `task remove`.
+- **Task ID generation for `tsm task add`** uses the parent phase's slug prefix + next available integer suffix. Format: `<PHASE-PREFIX>-T<NN>` where NN is zero-padded to 2 digits (e.g. `P7-T01`). Phase prefix is derived by uppercasing the first token of the phase slug. Collision detection: if the generated ID already exists anywhere in TASKS.md, increment until unique.
+- **`tsm import` API key** is stored in `.tsm/config.toml` under `[import] api_key = "..."`. This file is always in `.tsm/` and therefore always gitignored. tsm never commits, logs, or prints the API key.
+- **`tsm sync --from` marks tasks complete and appends them to TASKS-COMPLETED.md** with blank commit message fields. This is acceptable — the sync operation is a bulk state reconciliation, not a commit-by-commit history.
+- **`tsm repair` never silently deletes content.** Every change is listed in the confirm summary with a before/after. Content that cannot be parsed or understood is skipped and reported, not removed.
+- **Graphical dependency visualisation (SVG/HTML) is deferred to v2.** `tsm deps --tree` outputs ASCII only in v1.
 - **`--output json` on read-only commands is deferred to v2.** Do not implement or stub it in v1.0.
+
+---
+
+## 12.7 Phase 7 command tests
+
+| Test ID | Description |
+|---------|-------------|
+| `test_import_normalizes_tasks` | LLM response with valid JSON → TASKS.md written with canonical field format |
+| `test_import_fills_missing_fields_with_defaults` | Fields absent from LLM response → filled with `unset`/`None` defaults |
+| `test_import_no_api_key` | Missing `.tsm/config.toml` api_key → exit 1, clear error, no files written |
+| `test_import_api_error` | API returns error → exit 1, clear error, no files written |
+| `test_phase_add_appends_phase_block` | `phase add` → new H1 block appears at correct position in TASKS.md |
+| `test_phase_add_updates_phase_structure_table` | `phase add` → new row appended to `## Phase structure` table |
+| `test_phase_edit_name_updates_heading_and_table` | `phase edit --name` → H1 heading and Phase structure table row updated; all task blocks unchanged |
+| `test_phase_move_reorders_h1_blocks` | `phase move --after` → phase block moves; all content within blocks preserved byte-for-byte |
+| `test_phase_remove_blocked_by_deps` | Phase contains task with external dependents → exit 1, dep tree printed |
+| `test_phase_remove_force_cascade` | `phase remove --force` → phase and all its tasks removed; dangling deps reported |
+| `test_task_add_generates_id` | `task add --phase P1` → ID generated as `P1-T<next>`, unique across file |
+| `test_task_add_id_collision_increments` | Generated ID already exists → suffix incremented until unique |
+| `test_task_edit_field` | `task edit <id> --field status --value "Pending"` → only **Status:** line changed |
+| `test_task_move_within_phase` | `task move <id> --after <id>` → task block reordered within phase; content unchanged |
+| `test_task_move_between_phases` | `task move <id> --phase <phase-id>` → task block moves; phase_id updated; SESSIONSTATE.md updated if task was active/up-next |
+| `test_task_remove_blocked_by_deps` | Task ID appears in another task's Hard deps → exit 1, blocked-by list printed |
+| `test_task_remove_force` | `task remove --force` → task block removed; VC-02 dangling dep warning emitted |
+| `test_repair_fills_missing_fields` | Task block missing Complexity → repaired to `unset`; confirm summary shows before/after |
+| `test_repair_removes_vc10_rows` | TASKS-COMPLETED.md row with unknown task ID → row removed; confirm summary lists removal |
+| `test_repair_normalizes_session_task_id` | SESSIONSTATE.md active task ID not in TASKS.md → prompts for replacement or clear |
+| `test_repair_skips_unparseable_content` | Block that cannot be understood → skipped and reported; not deleted |
+| `test_sync_sets_active_task` | `sync --from P1-T03` → P1-T01, P1-T02 set complete; P1-T03 active; P1-T04+ pending |
+| `test_sync_rebuilds_sessionstate` | After sync, SESSIONSTATE.md active task, up_next, and phase all consistent with TASKS.md |
+| `test_sync_appends_completed_to_log` | Tasks set complete by sync → appended to TASKS-COMPLETED.md with blank commit field |
+| `test_sync_warns_parallel_deps` | Phase has parallel task tracks → warning emitted; operation proceeds |
+| `test_deps_single_task` | `deps P1-T03` → lists what P1-T03 depends on and what depends on P1-T03 |
+| `test_deps_tree_output` | `deps --tree` → ASCII tree output contains all tasks with deps; format matches §16.3 |
+| `test_deps_blocked_list` | `deps --blocked` → lists only tasks with at least one unmet dep |
+| `test_deps_check_clean` | `deps --check` on a consistent file → exit 0, "No dependency issues found." |
+| `test_deps_check_dangling` | `deps --check` with dangling dep → exit 1, affected task IDs listed |
+| `test_deps_pre_write_gate_blocks_remove` | Removing a task with dependents without `--force` → exit 1 before any write |
+| `test_deps_cycle_detection` | `detect_cycles()` on a graph with A→B→A cycle → returns [[A, B, A]]; returns [] on acyclic graph |
+| `test_sync_unknown_task_id` | `sync --from NONEXISTENT` → exit 1, "Unknown task ID" message, no files written |
+| `test_task_edit_hard_deps_dep_gate` | `task edit <id> --field hard_deps --value "<cycle-creating-dep>"` → exit 1, cycle error printed, no files written |
+
+---
+
+## 15. Phase 7 Command Specifications
+
+### 15.1 Command: `import`
+
+**Requires project root. Requires API key in `.tsm/config.toml`.**
+
+```
+tsm import [--tasks <file>] [--session <file>]
+```
+
+If no flags given, attempts to import both `TASKS.md` and `SESSIONSTATE.md` from the current project root.
+
+#### 15.1.1 API key configuration
+
+Stored in `.tsm/config.toml`:
+
+```toml
+[import]
+api_key = "sk-ant-..."
+model = "claude-sonnet-4-20250514"   # optional; this is the default
+```
+
+This file is in `.tsm/` and therefore always gitignored. tsm never commits, logs, or prints the key. If absent: exit 1 with:
+
+```
+❌ tsm import requires an API key.
+   Add it to .tsm/config.toml:
+
+   [import]
+   api_key = "sk-ant-..."
+```
+
+#### 15.1.2 Normalization prompt and JSON schema
+
+tsm sends the raw file content to the Anthropic API. The system prompt must include the JSON schema and field rules; the user message contains only the raw file content.
+
+**System prompt template (implement as a module-level string constant in `import_cmd.py`):**
+
+```
+You are a data normalizer. Convert the provided markdown file into a JSON object matching the schema below.
+Rules:
+- Extract all phases and tasks exactly as described. Do not invent content.
+- For any field you cannot confidently infer from the source text, use the default value shown.
+- Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+
+JSON schema:
+{
+  "phases": [
+    {
+      "name": "<string — full phase heading text>",
+      "status": "<string — one of: complete, active, pending, blocked, needs_review, in_progress>",
+      "tasks": [
+        {
+          "id": "<string — task ID e.g. P1-T01, or generated as PHASE_PREFIX-T01 if absent>",
+          "title": "<string>",
+          "status": "<string — same enum as phase status>",
+          "complexity": "<string — one of: high, medium, low, unset>",
+          "what": "<string>",
+          "prerequisite": "<string — default: None.>",
+          "hard_deps": "<string — comma-separated IDs or None>",
+          "files": "<string — comma-separated paths or blank>",
+          "reviewer": "<string — default: Skip>",
+          "key_constraints": ["<string>"],
+          "done_when": "<string>"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Fields the LLM cannot confidently infer are filled with safe defaults:
+- `complexity` → `"unset"`
+- `hard_deps` → `"None"`
+- `reviewer` → `"Skip"`
+- `key_constraints` → `[]`
+- `prerequisite` → `"None."`
+
+The confirm summary lists every field that was defaulted so the user can review.
+
+**Validation after parsing the JSON response:**
+- Every task must have a non-empty `id` and `title` — if missing, generate ID and flag in summary
+- All `hard_deps` task IDs must exist within the returned JSON — flag cross-references that can't be resolved
+- `status` values must match the known enum — unknown values default to `pending`
+
+#### 15.1.3 Error handling
+
+| Condition | Behaviour |
+|-----------|-----------|
+| API key missing | Exit 1, print setup instructions |
+| API returns error | Exit 1, print API error message, no files written |
+| LLM response not valid JSON | Retry once; if still invalid, exit 1 with raw response saved to `.tsm/import-debug.txt` |
+| LLM response missing required fields | Fill with defaults, flag in confirm summary |
+
+---
+
+### 15.2 Command: `phase`
+
+#### `tsm phase add`
+
+```
+tsm phase add --name "Phase 2 — Widgets" [--after <phase-id>] [--status "Pending"]
+```
+
+- Creates a new H1 block at the correct position in TASKS.md (end of file if `--after` omitted)
+- Appends a row to the `## Phase structure` table
+- Auto-generates phase ID via `slugify_phase_name()`
+- Writes via shadow model
+
+#### `tsm phase edit`
+
+```
+tsm phase edit <phase-id> [--name "..."] [--status "..."]
+```
+
+- Updates only the H1 heading text and/or the `**Status:**` line
+- If `--name` changes, also updates the matching row in `## Phase structure` table
+- All task blocks within the phase preserved byte-for-byte
+
+#### `tsm phase move`
+
+```
+tsm phase move <phase-id> --after <phase-id>
+tsm phase move <phase-id> --first
+```
+
+- Reorders H1 blocks in TASKS.md
+- All content within every block preserved byte-for-byte
+- Updates `## Phase structure` table row order to match
+- **Complexity: high** — most complex writer task in Phase 7
+
+#### `tsm phase remove`
+
+```
+tsm phase remove <phase-id> [--force]
+```
+
+**Without `--force`:** Blocked if any task in the phase has its ID referenced in another task's `Hard deps` anywhere in TASKS.md. Prints the blocking dependency tree and exits 1.
+
+**With `--force`:** Removes the phase block and all task blocks within it. Any now-dangling `Hard deps` references are left in place — vibe-check VC-02 will flag them. The confirm summary explicitly lists all dangling deps created.
+
+---
+
+### 15.3 Command: `task`
+
+#### `tsm task add`
+
+```
+tsm task add --phase <phase-id> --title "..." [--after <task-id>]
+```
+
+If run without `--title`, opens `TaskFormOverlay` (Textual modal) for interactive field entry. Required fields: title, what, done_when. Optional fields pre-filled with defaults (Complexity: unset, Hard deps: None, Reviewer: Skip).
+
+ID generation: `<PHASE-PREFIX>-T<NN>` — see §14 constraint for algorithm.
+
+#### `tsm task edit`
+
+```
+tsm task edit <task-id> [--field <field-name> --value "..."]
+```
+
+Non-interactive (agent use): `--field` + `--value` updates a single field using targeted replacement.
+
+Interactive (human use): omit flags → opens `TaskFormOverlay` pre-populated with current field values. On confirm, writes only the changed fields via targeted replacement.
+
+Editable fields: `title`, `status`, `complexity`, `what`, `prerequisite`, `hard_deps`, `files`, `reviewer`, `key_constraints`, `done_when`.
+
+**`hard_deps` edit triggers dependency pre-write gate** — if the new deps value creates a cycle or references a nonexistent ID, abort before writing.
+
+#### `tsm task move`
+
+```
+tsm task move <task-id> --after <task-id>      # reorder within phase
+tsm task move <task-id> --phase <phase-id>     # move to different phase
+tsm task move <task-id> --phase <phase-id> --after <task-id>  # move and position
+```
+
+If the moved task is referenced in SESSIONSTATE.md (active or up-next), SESSIONSTATE.md is also updated in the same write operation.
+
+#### `tsm task remove`
+
+```
+tsm task remove <task-id> [--force]
+```
+
+Same block/force logic as `phase remove`. Without `--force`: blocked if this task ID appears in any other task's `Hard deps`. With `--force`: removes the task block; dangling deps left in place with a confirm summary warning.
+
+---
+
+### 15.4 Command: `repair`
+
+```
+tsm repair [--tasks] [--session] [--completed]
+```
+
+No flags = repair all three files.
+
+**TASKS.md repairs:**
+- Missing required fields → filled with safe defaults; each filled field listed in confirm summary with before/after
+- Malformed status tokens → normalized to canonical form (e.g. `Complete` → `✅ Complete`)
+- Duplicate task IDs → both tasks listed in confirm summary with `[duplicate]` label; the second occurrence is renamed to `<id>-duplicate` automatically. No interactive prompt during staging — the user sees the rename in the confirm summary and can reject if needed, then manually edit.
+- Content that cannot be parsed → skipped and reported; never deleted
+
+**SESSIONSTATE.md repairs:**
+- Active task ID not in TASKS.md → prompts: clear active task, or select replacement from TASKS.md
+- Up next task IDs not in TASKS.md → removed from Up next table; listed in confirm summary
+- Timestamp in legacy date-only format → upgraded to `YYYY-MM-DDTHH:MM` with time `00:00`
+- Missing sections → rebuilt with empty/default content
+
+**TASKS-COMPLETED.md repairs:**
+- Rows where task ID does not exist in TASKS.md → removed; listed in confirm summary
+- Phase sections with no rows → removed
+
+All repairs go through the shadow model. The confirm summary groups changes by file and labels each with `[defaulted]`, `[normalized]`, `[removed]`, or `[skipped]`.
+
+---
+
+### 15.5 Command: `sync`
+
+```
+tsm sync --from <task-id>
+```
+
+Rebuilds all three writable files to reflect `<task-id>` as the current active task.
+
+**Algorithm:**
+
+1. Locate `<task-id>` in TASKS.md; abort with exit 1 if not found (`Unknown task ID: <id>`)
+2. Identify the task's phase
+3. In file order within the phase, set all tasks before `<task-id>` to `✅ Complete` — overrides any current status including `Active` or `In progress`
+4. Set `<task-id>` itself to `Active`
+5. Set all tasks after `<task-id>` in the phase to `Pending` — overrides any current status
+6. For all phases before the current phase in file order: set phase status to `✅ Complete`; set all tasks within them to `✅ Complete` — overrides any current status
+7. For all phases after the current phase in file order: set phase status to `Pending`; set all tasks within them to `Pending`
+8. Rebuild SESSIONSTATE.md: set active phase from current phase, set active task from `<task-id>` raw_block, set up next from all subsequent dep-free tasks in the current phase, clear the completed table (sync is a reconciliation — it does not reconstruct per-session history)
+9. Append all tasks newly set to `✅ Complete` in this operation to TASKS-COMPLETED.md with blank commit message fields. Tasks that were already `✅ Complete` before sync are not re-appended.
+
+**Parallel dep chain warning:**
+If the phase contains tasks with parallel dep tracks (i.e. tasks not in a linear sequence), emit:
+```
+⚠️  Phase "<name>" has parallel task tracks. sync --from assumes file order = completion order.
+    Verify the following tasks were actually completed before <task-id>:
+    <list of tasks that precede <task-id> in file order but have no dep relationship to it>
+Proceed? [Y/n]:
+```
+This is a warning with a prompt, not a hard block.
+
+**Confirm summary example:**
+```
+TASKS.md
+  • Set P1-T01 status → ✅ Complete
+  • Set P1-T02 status → ✅ Complete
+  • Set P1-T03 status → Active
+  • Set P1-T04 status → Pending
+
+SESSIONSTATE.md
+  • Set Active phase → Phase 1 — Foundation
+  • Set Active task → P1-T03
+  • Set Up next → P1-T04
+
+TASKS-COMPLETED.md
+  • Append P1-T01 (commit: —)
+  • Append P1-T02 (commit: —)
+```
+
+---
+
+## 16. Dependency Engine
+
+### 16.1 Core data structures
+
+The dependency engine is implemented in `tsm/deps.py` as a module-level set of functions operating on a `LoadedProject`. It does not maintain its own state — it derives everything from the parsed `phases` list on each call.
+
+```python
+def build_dep_graph(phases: list[Phase]) -> dict[str, set[str]]:
+    """Returns {task_id: set_of_dep_ids} for all tasks in the project."""
+
+def get_dependents(task_id: str, phases: list[Phase]) -> list[str]:
+    """Returns list of task IDs that list task_id in their Hard deps."""
+
+def get_dep_chain(task_id: str, phases: list[Phase]) -> list[str]:
+    """Returns the full transitive dependency chain for task_id (all ancestors)."""
+
+def get_blocked_tasks(phases: list[Phase]) -> list[tuple[str, list[str]]]:
+    """Returns [(task_id, [unmet_dep_ids])] for all tasks with unmet deps."""
+
+def check_deps(phases: list[Phase]) -> list[str]:
+    """Returns list of error strings. Empty list = no issues. Used as pre-write gate."""
+
+def detect_cycles(phases: list[Phase]) -> list[list[str]]:
+    """Returns list of cycles found. Each cycle is a list of task IDs forming the loop."""
+```
+
+### 16.2 Pre-write gate
+
+All Phase 7 write commands (phase add/edit/move/remove, task add/edit/move/remove, repair, sync) call `check_deps()` **on the proposed in-memory state** — i.e. after applying the intended transformation to the in-memory `LoadedProject`, but before staging any writes to shadow files.
+
+This distinction matters for remove operations: `check_deps()` is called on the state *after* the task or phase has been removed from memory, not the current live state. This allows `check_deps()` to correctly identify dangling references that the removal would create.
+
+If `check_deps()` returns errors on the proposed state:
+- Print the errors with the heading: `Dependency issues in proposed changes:`
+- For `remove` commands with `--force`: print errors as warnings and proceed
+- For all other commands: exit 1, no files written
+
+`check_deps()` validates three things against the proposed state:
+- No task ID in any `Hard deps` field references a nonexistent task ID
+- No dependency cycles exist (via `detect_cycles()`)
+- No task lists itself as a dependency
+
+### 16.3 Command: `deps`
+
+**Read-only. Does not require confirmation.**
+
+```
+tsm deps                    # same as --tree (bare invocation for discoverability)
+tsm deps <task-id>          # detail for one task
+tsm deps --tree             # full ASCII dependency tree
+tsm deps --blocked          # list tasks with unmet deps only
+tsm deps --check            # validate all deps; exit 1 if issues found
+```
+
+`tsm deps` with no arguments is identical to `tsm deps --tree`. This is intentional — the most commonly useful output should be the easiest to invoke.
+
+#### `tsm deps <task-id>` output:
+
+```
+─────────────────────────────
+  Dependencies for P2-T01
+─────────────────────────────
+  Depends on:
+    P1-T02  ✅ Complete
+    P1-T04  ✅ Complete
+
+  Required by:
+    P2-T02  · Pending
+
+  Status:   ✅ All deps met — ready to start
+─────────────────────────────
+```
+
+If deps are unmet:
+```
+  Status:   🔒 Blocked
+              P1-T04 is Pending (must be Complete)
+```
+
+#### `tsm deps --tree` output:
+
+Renders a compact ASCII tree of all tasks, indented by dependency depth. Tasks with no deps are roots. Circular deps are flagged inline.
+
+```
+─────────────────────────────
+  Dependency Tree
+─────────────────────────────
+
+  P1-T01  Package scaffold              ✅
+  P1-T02  models.py                     ✅  ← P1-T01
+  P1-T03  project.py                    ✅  ← P1-T02
+  P1-T04  Test fixtures                 ✅  ← P1-T01
+
+  P2-T01  tasks_parser core             ✅  ← P1-T02, P1-T04
+  P2-T02  tasks_parser edge cases       ✅  ← P2-T01
+  P2-T03  session_parser               ✅  ← P1-T02, P1-T04
+  P2-T04  completed_parser             ✅  ← P1-T02, P1-T04
+
+─────────────────────────────
+  26 tasks  |  0 blocked  |  0 cycles
+─────────────────────────────
+```
+
+#### `tsm deps --blocked` output:
+
+```
+─────────────────────────────
+  Blocked tasks (2)
+─────────────────────────────
+  P4-T06  commands/help.py
+          Waiting on: P4-T05 (Pending)
+
+  P6-T05  app.py — full TUI wiring
+          Waiting on: P6-T04 (Pending)
+─────────────────────────────
+```
+
+#### `tsm deps --check` output:
+
+```
+✅ No dependency issues found. (26 tasks checked)
+```
+
+Or on failure:
+```
+❌ 2 dependency issues found:
+
+  P3-T01  Hard deps references "P9-T99" — task does not exist
+  P2-T03  Cycle detected: P2-T03 → P2-T01 → P2-T03
+```
+
+Exit code 0 on clean, exit code 1 on issues.
+
+### 16.4 File structure additions
+
+```
+tsm/
+  deps.py                  # dependency engine — all functions from §16.1
+tests/
+  test_deps.py             # all §12.7 deps tests
+```
+
+`deps.py` has no imports from command modules — it takes `list[Phase]` as input only. Command modules import from `deps.py`, not the reverse.
+
