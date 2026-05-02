@@ -102,6 +102,9 @@ def status(ctx: LoadedProject) -> None:
     else:
         completed_line = "  Completed:   (none)"
 
+    # Phase overview — all phases with status
+    phase_overview_lines = _build_phase_overview(ctx)
+
     # ── Print output ──────────────────────────────────────────────────────
 
     separator = "─" * 29
@@ -122,10 +125,49 @@ def status(ctx: LoadedProject) -> None:
     print()
     print(up_next_line)
     print(completed_line)
+    print()
+
+    # Phase overview block
+    if phase_overview_lines:
+        for line in phase_overview_lines:
+            print(line)
+
     print(separator)
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
+
+
+def _build_phase_overview(ctx: LoadedProject) -> list[str]:
+    """Build a list of lines showing all phases with their status.
+
+    Uses ``ctx.phases`` (parsed from TASKS.md) for task-count details and
+    ``ctx.phase_overview`` for the ordered phase list.  The current active
+    phase is highlighted with ``← current``.
+
+    Returns an empty list if there are no phases.
+    """
+    if not ctx.phases:
+        return []
+
+    active_name = ctx.session.active_phase_name
+    lines: list[str] = []
+    lines.append("  Phases:")
+    lines.append("  " + "─" * 55)
+
+    for phase in ctx.phases:
+        total = len(phase.tasks)
+        complete = sum(1 for t in phase.tasks if t.status == TaskStatus.COMPLETE)
+        status_label = phase.status.lower().replace("_", " ")
+        is_current = phase.name == active_name
+        marker = "  ← current" if is_current else ""
+        lines.append(
+            f"    {phase.id:<40s} {status_label:<14s}"
+            f"({complete}/{total} tasks){marker}"
+        )
+
+    lines.append("")
+    return lines
 
 
 def _phase_status_str(ctx: LoadedProject) -> str:

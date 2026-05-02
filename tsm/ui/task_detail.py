@@ -108,7 +108,7 @@ class TaskDetail(Widget):
                 lookups.
         """
         super().__init__(**kwargs)
-        self._task = task
+        self._detail_task = task
         self._phases = phases if phases is not None else []
 
     # ── compose / mount ──────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ class TaskDetail(Widget):
         Call this when the user selects a different task in the tree
         or the active task changes.
         """
-        self._task = task
+        self._detail_task = task
         self._phases = phases
         self._update_content()
 
@@ -146,7 +146,7 @@ class TaskDetail(Widget):
 
         Returns a placeholder when no task is set.
         """
-        task = self._task
+        task = self._detail_task
         if task is None:
             return Text("No task selected", style="italic dim white")
 

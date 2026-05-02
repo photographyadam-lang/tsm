@@ -88,7 +88,7 @@ P1-T01
 
 # Phase 2 — CLI Interface & Interaction
 
-**Status:** ✅ Complete
+**Status:** **Active**
 
 Build the user-facing interface: an argparse command parser for fast CLI workflows, a Rich-based TUI for interactive exploration, and search/filter/sort for task discovery.
 
@@ -98,7 +98,7 @@ Build the user-facing interface: an argparse command parser for fast CLI workflo
 
 ### P2-T01 · Build CLI command parser
 
-**Status:** ✅ Complete
+**Status:** **Active**
 **Complexity:** medium
 **What:** Implement an argparse-based command dispatcher that handles all user-facing commands: add, list, done, delete, edit, search, stats. Each command maps to a service-layer method.
 **Prerequisite:** Phase 1 complete.
@@ -116,7 +116,7 @@ Build the user-facing interface: an argparse command parser for fast CLI workflo
 
 ### P2-T02 · Implement interactive TUI with Rich menus
 
-**Status:** ✅ Complete
+**Status:** Pending
 **Complexity:** high
 **What:** Build an interactive terminal UI using the Rich library. Displays a live task table with colour-coded priorities, keyboard shortcuts for common actions, and a detail panel for the selected task.
 **Prerequisite:** P2-T01 complete.
@@ -134,7 +134,7 @@ Build the user-facing interface: an argparse command parser for fast CLI workflo
 
 ### P2-T03 · Add search, filter, and sort for tasks
 
-**Status:** ✅ Complete
+**Status:** Pending
 **Complexity:** medium
 **What:** Extend both CLI and TUI with powerful filtering: by status (all/pending/active/done), priority, category, due-date range, and free-text search across titles. Results are sortable by any column.
 **Prerequisite:** P2-T01 complete.

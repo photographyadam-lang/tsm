@@ -37,7 +37,10 @@ def render_sessionstate(state: SessionState) -> str:
     * ``## Active phase`` section from ``state.active_phase_name`` and
       ``state.active_phase_spec``.
     * ``## Completed tasks`` as a 3-column pipe-delimited table.
-    * ``## Active task`` — re-emits ``state.active_task_raw`` verbatim.
+    * ``## Active task`` — always emitted with a ``## Active task``
+      heading, followed by the task's markdown content (stripped of any
+      duplicate heading that may have been carried through from a
+      round-trip parse).
     * ``## Up next`` as a 5-column pipe-delimited table that **always**
       includes the Complexity column.
     * ``## Out of scope`` — re-emits ``state.out_of_scope_raw`` verbatim.
@@ -72,19 +75,89 @@ def render_sessionstate(state: SessionState) -> str:
         parts.append(f"| {task.id} | {task.title} | {task.what} |")
     parts.append("")
 
-    # ── --- ── ## Active task (verbatim) ─────────────────────────────────
+    # ── --- ── ## Active task ─────────────────────────────────────────────
     parts.append("---")
-    # NOTE: No blank line here — active_task_raw already starts with \n
-    # (the section block produced by _split_sections begins with the content
-    #  after the --- line, which is \n from the blank line in the source).
-    if state.active_task_raw:
-        parts.append(state.active_task_raw.rstrip("\n"))
+    parts.append("")
+    parts.append("## Active task")
+    parts.append("")
+    # The raw block may come from two sources:
+    #   1. TASKS.md raw_block (starts with "### P2-T01 · ...") — no
+    #      heading, just the task content.
+    #   2. Session parser round-trip (starts with "\n## Active task\n...")
+    #      — includes the heading that was emitted on a previous render.
+    # We strip the heading in case (2) so that the renderer always
+    # produces exactly one ## Active task heading.
+    raw = state.active_task_raw or ""
+    if raw.strip() and raw.strip() != "[none]":
+        content = _strip_active_task_heading(raw)
+        parts.append(content.rstrip("\n"))
     else:
-        # Empty / no active task — emit the heading and [none] marker.
-        parts.append("## Active task")
-        parts.append("")
         parts.append("[none]")
     parts.append("")
+
+    # ── --- ── ## Up next (5-column, always includes Complexity) ──────────
+    parts.append("---")
+    parts.append("")
+    parts.append("## Up next")
+    parts.append("")
+    parts.append("| Task | Description | Hard deps | Complexity | Reviewer |")
+    parts.append("|------|-------------|-----------|------------|----------|")
+    for task in state.up_next:
+        deps_str = ", ".join(task.hard_deps) if task.hard_deps else "\u2014"
+        complexity = task.complexity.value if task.complexity else "unset"
+        parts.append(
+            f"| {task.id} | {task.title} | {deps_str} | {complexity} | {task.reviewer} |"
+        )
+    parts.append("")
+
+    # ── --- ── ## Out of scope (verbatim) ─────────────────────────────────
+    parts.append("---")
+    # NOTE: Same reasoning as active_task_raw — the raw block already
+    # carries its own leading \n from the --- section split.
+    if state.out_of_scope_raw:
+        parts.append(state.out_of_scope_raw.rstrip("\n"))
+    else:
+        parts.append("## Out of scope")
+    parts.append("")
+
+    return "\n".join(parts)
+
+
+def _strip_active_task_heading(raw: str) -> str:
+    """Remove the ``## Active task`` heading line from *raw* if present.
+
+    The session parser stores the full section block (including the
+    ``## Active task`` heading) as ``active_task_raw``.  Commands that
+    initialise or advance a phase set ``active_task_raw`` from
+    ``Task.raw_block`` (which starts with ``### P2-T01 · ...`` and has
+    **no** ``## `` heading).  This helper normalises both forms so the
+    renderer can always emit the heading itself.
+
+    Strips the heading line and any leading blank lines that followed it,
+    so the result is clean content starting with the task-level ``###``
+    heading or inline content.
+
+    Returns the content with the heading line and subsequent blank lines
+    removed.
+    """
+    lines = raw.split("\n")
+    # Filter out any line that is exactly "## Active task" (possibly with
+    # leading whitespace from the section block)
+    filtered = [l for l in lines if not l.strip().startswith("## Active task")]
+    # Strip leading blank lines that were after the removed heading
+    while filtered and filtered[0].strip() == "":
+        filtered = filtered[1:]
+    return "\n".join(filtered)
+
+
+def write_session_file(content: str, shadow_path: str) -> None:
+    """Write ``content`` to ``shadow_path`` (typically under ``.tsm/shadow/``).
+
+    Creates parent directories if they do not exist.
+    """
+    p = Path(shadow_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
 
     # ── --- ── ## Up next (5-column, always includes Complexity) ──────────
     parts.append("---")
