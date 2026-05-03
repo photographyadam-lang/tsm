@@ -442,7 +442,8 @@ def _repair_session_content(
     Repairs:
     1. Upgrade legacy date-only timestamp to ``YYYY-MM-DDTHH:MM``.
     2. Validate active task ID exists in TASKS.md.
-    3. Rebuild up_next if active task was cleared.
+    3. Detect orphaned pending tasks (in the active phase but missing from
+       the session's ``up_next``) and add them to the up_next table.
     """
     changes: list[str] = []
     lines = content.splitlines(keepends=True)
@@ -484,6 +485,95 @@ def _repair_session_content(
                 + new_section
                 + lines[active_task_end:]
             )
+
+    # ── Repair 3: Rebuild up_next with orphaned pending tasks ──────────
+    # Finds non-complete tasks in the active phase (from TASKS.md) that
+    # are not the active task, not already in up_next, and not in the
+    # completed list, then adds them to the ## Up next table.
+    active_phase_name = ctx.session.active_phase_name
+    active_phase = None
+    for phase in ctx.phases:
+        if phase.name == active_phase_name:
+            active_phase = phase
+            break
+
+    if active_phase is not None:
+        # Collect task IDs already present in the session
+        up_next_ids = {t.id for t in ctx.session.up_next}
+        current_active_id = (
+            ctx.session.active_task.id
+            if ctx.session.active_task is not None
+            else None
+        )
+        completed_ids = {t.id for t in ctx.session.completed}
+
+        # Find orphaned: non-complete tasks in the active phase that are
+        # not in up_next, not the active task, and not completed
+        orphaned: list[Task] = []
+        for task in active_phase.tasks:
+            if task.status == TaskStatus.COMPLETE:
+                continue
+            if task.id in up_next_ids:
+                continue
+            if task.id == current_active_id:
+                continue
+            if task.id in completed_ids:
+                continue
+            orphaned.append(task)
+
+        if orphaned:
+            # Find the ## Up next section in raw content
+            up_next_idx = -1
+            for i, line in enumerate(lines):
+                if line.rstrip("\n\r") == "## Up next":
+                    up_next_idx = i
+                    break
+
+            if up_next_idx >= 0:
+                # Find the closing --- of the up_next section
+                close_idx = -1
+                for i in range(up_next_idx + 1, len(lines)):
+                    if lines[i].rstrip("\n\r") == "---":
+                        close_idx = i
+                        break
+
+                if close_idx >= 0:
+                    # Find insertion position: after the last content line
+                    # before the blank lines that precede the closing ---
+                    insert_pos = close_idx
+                    for i in range(close_idx - 1, up_next_idx, -1):
+                        if lines[i].strip():
+                            insert_pos = i + 1
+                            break
+
+                    # Build new table rows matching the up_next table format
+                    # (§9.3: | Task | Description | Hard deps | Complexity | Reviewer |)
+                    new_rows: list[str] = []
+                    for task in orphaned:
+                        deps_str = (
+                            ", ".join(task.hard_deps)
+                            if task.hard_deps
+                            else "\u2014"
+                        )
+                        cx = (
+                            task.complexity.value
+                            if task.complexity
+                            else "unset"
+                        )
+                        new_rows.append(
+                            f"| {task.id} | {task.title} | {deps_str}"
+                            f" | {cx} | {task.reviewer} |\n"
+                        )
+
+                    # Insert new rows at the determined position
+                    for idx, row in enumerate(new_rows):
+                        lines.insert(insert_pos + idx, row)
+
+                    changes.append(
+                        f"[rebuilt] Added {len(orphaned)} missing task(s) "
+                        f"to up_next: "
+                        f"{', '.join(t.id for t in orphaned)}"
+                    )
 
     # Reconstruct
     repaired = "".join(lines)

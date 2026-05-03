@@ -91,6 +91,19 @@ def status(ctx: LoadedProject) -> None:
     else:
         up_next_line = "  Up next:     (none)"
 
+    # Orphaned-task warning: detect non-complete tasks in the active phase
+    # that are missing from the session's up_next (e.g. added to TASKS.md
+    # after phase init, before advance could pick them up).
+    orphaned = _check_orphaned_up_next(ctx)
+    orphaned_warning_line = ""
+    if orphaned:
+        orphaned_ids = ", ".join(t.id for t in orphaned)
+        orphaned_warning_line = (
+            f"  \u26a0\ufe0f  Warning: {len(orphaned)} task(s) missing from "
+            f"up_next: {orphaned_ids}\n"
+            f"     Run 'tsm repair --session' to fix."
+        )
+
     # Completed line
     completed_tasks = session.completed
     if completed_tasks:
@@ -124,6 +137,8 @@ def status(ctx: LoadedProject) -> None:
 
     print()
     print(up_next_line)
+    if orphaned_warning_line:
+        print(orphaned_warning_line)
     print(completed_line)
     print()
 
@@ -260,6 +275,54 @@ def _status_icon(status: TaskStatus) -> str:
         TaskStatus.IN_PROGRESS: "🔄",
     }
     return mapping.get(status, "❓")
+
+
+def _check_orphaned_up_next(ctx: LoadedProject) -> list[Task]:
+    """Find non-complete tasks in the active phase missing from
+    ``ctx.session.up_next``.
+
+    These are tasks that were added to ``TASKS.md`` (or whose status was
+    changed to pending) *after* the phase was initialised — the session's
+    ``up_next`` is a one-time snapshot taken during ``init_phase()``.
+
+    Returns a list of orphaned :class:`Task` objects (empty if none found).
+    """
+    active_phase_name = ctx.session.active_phase_name
+    if not active_phase_name or active_phase_name.lower() == "[none]":
+        return []
+
+    # Locate the active phase in parsed phases
+    active_phase = None
+    for phase in ctx.phases:
+        if phase.name == active_phase_name:
+            active_phase = phase
+            break
+    if active_phase is None:
+        return []
+
+    # Build lookup sets from the session
+    up_next_ids = {t.id for t in ctx.session.up_next}
+    active_task_id = (
+        ctx.session.active_task.id
+        if ctx.session.active_task is not None
+        else None
+    )
+    completed_ids = {t.id for t in ctx.session.completed}
+
+    # Collect orphaned tasks
+    orphaned: list[Task] = []
+    for task in active_phase.tasks:
+        if task.status == TaskStatus.COMPLETE:
+            continue
+        if task.id in up_next_ids:
+            continue
+        if task.id == active_task_id:
+            continue
+        if task.id in completed_ids:
+            continue
+        orphaned.append(task)
+
+    return orphaned
 
 
 # ── HELP_TEXT ──────────────────────────────────────────────────────────────

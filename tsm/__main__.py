@@ -45,7 +45,9 @@ class WriteError(TsmError):
 # ── Known command definitions ────────────────────────────────────────────────
 
 # Write commands (return list[PendingWrite], use confirm→apply flow)
-_WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase", "phase", "task"})
+_WRITE_COMMANDS = frozenset({
+    "advance", "init-phase", "complete-phase", "phase", "task", "repair",
+})
 
 # Read-only commands (print to stdout, no PendingWrite)
 _READ_COMMANDS = frozenset({"status", "vibe-check", "undo", "deps"})
@@ -461,6 +463,21 @@ def _handle_write_command(
                 print(f"Unknown task subcommand: {subcommand}")
                 print("Usage: tsm task <add|edit|move|remove> [args...]")
                 sys.exit(1)
+        elif command == "repair":
+            from tsm.commands.repair import repair
+
+            # Parse optional flags; default all to False → repair() treats
+            # all-false as "repair everything" internally.
+            tasks_flag = "--tasks" in rest
+            session_flag = "--session" in rest
+            completed_flag = "--completed" in rest
+
+            pending_writes = repair(
+                loaded,
+                tasks=tasks_flag,
+                session=session_flag,
+                completed=completed_flag,
+            )
         else:
             # Should never reach here
             return

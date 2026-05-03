@@ -31,6 +31,7 @@ Commands:
   init-phase <phase-id>    Initialise SESSIONSTATE.md for the start of a phase
   new-project [--name]     Scaffold blank workflow files in the current directory
   phase <add|edit|move|remove> [args...]  Phase CRUD commands
+  repair [--tasks] [--session] [--completed]  Repair inconsistencies in workflow files
   status                   Print current session state (read-only)
   task <add|edit|move|remove> [args...]   Task CRUD commands
   undo                     Revert the most recent apply operation
@@ -50,6 +51,7 @@ _COMMAND_NAMES: dict[str, str] = {
     "init-phase": "tsm.commands.init_phase",
     "new-project": "tsm.commands.new_project",
     "phase": "tsm.commands.phase",
+    "repair": "tsm.commands.repair",
     "status": "tsm.commands.status",
     "task": "tsm.commands.task",
     "undo": "tsm.commands.undo",
