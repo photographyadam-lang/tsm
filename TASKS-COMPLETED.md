@@ -47,3 +47,22 @@
 | Task | Description | Complexity | Commit message | Notes |
 |------|-------------|------------|----------------|-------|
 | P5-T01 | __main__.py — CLI wiring, load_project bootstrap, --yes flag, exit codes | medium | | |
+
+## Phase 6 — TUI
+
+| Task | Description | Commit message |
+|------|-------------|----------------|
+| P6-T01 | ui/task_tree.py — left panel | |
+| P6-T02 | ui/task_detail.py — right panel | |
+| P6-T03 | ui/confirm_overlay.py — confirm-to-apply modal | |
+| P6-T04 | ui/vibe_panel.py and ui/help_panel.py | |
+| P6-T05 | app.py — full TUI wiring | |
+
+## Phase 7 — Management & Integrity — in progress.
+
+| Task | Description | Complexity | Commit | Notes |
+|------|-------------|------------|--------|-------|
+| P7-T01 | deps.py — dependency engine | medium | advanced |  |
+| P7-T02 | commands/deps.py — deps command | low | advanced |  |
+| P7-T03a | tasks_writer.py — block insert, remove, and field replacement | medium | advanced |  |
+| P7-T03b | tasks_writer.py — block reorder operations | high | advanced |  |

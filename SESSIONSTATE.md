@@ -1,10 +1,10 @@
-*Last updated: 2026-04-30T00:00*
+*Last updated: 2026-05-02T16:43*
 
 ---
 
 ## Active phase
 
-Phase 6 — TUI — in progress.
+Phase 7 — Management & Integrity — in progress.
 Spec: `SPECIFICATION-task-session-manager-v1.6.md`
 
 ---
@@ -13,35 +13,31 @@ Spec: `SPECIFICATION-task-session-manager-v1.6.md`
 
 | Task | Description | Commit message |
 |------|-------------|----------------|
-| P6-T01 | ui/task_tree.py — left panel | |
-| P6-T02 | ui/task_detail.py — right panel | |
-| P6-T03 | ui/confirm_overlay.py — confirm-to-apply modal | |
-| P6-T04 | ui/vibe_panel.py and ui/help_panel.py | |
+| P7-T01 | deps.py — dependency engine | advanced |
+| P7-T02 | commands/deps.py — deps command | advanced |
+| P7-T03a | tasks_writer.py — block insert, remove, and field replacement | advanced |
+| P7-T03b | tasks_writer.py — block reorder operations | advanced |
 
 ---
 
 ## Active task
 
-### P6-T05 · app.py — full TUI wiring
+### P7-T04 · commands/phase.py — phase CRUD commands
 
-**Status:** Ready
-**Complexity:** high
-**What:** Implement tsm/app.py with TsmApp(App). Compose two-panel layout: left panel hosts TaskTree, right panel hosts TaskDetail (default), VibecheckPanel (when vibe-check active), or HelpPanel (when help active). Fixed command bar footer per §8.1. Keybindings per §8.4: a → advance (prompt for commit message inline or via Input widget, then show ConfirmOverlay), i → init-phase (prompt for phase ID, then show ConfirmOverlay), c → complete-phase (show ConfirmOverlay), v → vibe-check (swap right panel to VibecheckPanel), u → undo (call shadow.undo directly, refresh), s → status (print to CLI or show in a read-only panel), ? → swap right panel to HelpPanel, q → quit. Context-aware command bar greying (§8.4): init-phase button greyed when active_task is set; complete-phase button greyed when any phase tasks are not complete; undo button greyed when history log has no undoable entry. After any write command applies, reload LoadedProject from disk and refresh both panels. Implements §8.1–§8.5.
-**Prerequisite:** All P6-T01 through P6-T04 complete.
-**Hard deps:** P6-T04
-**Files:** tsm/app.py
+**Status:** Pending
+**Complexity:** medium
+**What:** Implement tsm/commands/phase.py with four functions: phase_add(ctx, name, after_phase_id, status) -> list[PendingWrite]; phase_edit(ctx, phase_id, name, status) -> list[PendingWrite]; phase_move(ctx, phase_id, after_phase_id) -> list[PendingWrite]; phase_remove(ctx, phase_id, force) -> list[PendingWrite]. Each function: (1) applies the intended transformation to an in-memory copy of ctx.phases to produce the proposed state; (2) calls check_deps() on the proposed state; (3) for remove without force, aborts if check_deps returns errors; (4) builds PendingWrite for TASKS.md using structural writer functions from P7-T03a/T03b. phase_add creates a new phase block and updates the Phase structure table. phase_edit updates heading and/or Phase structure table row. phase_move calls reorder_phase_blocks. phase_remove calls remove_phase_block; with --force proceeds despite dep errors and lists dangling deps in confirm summary. Add HELP_TEXT. Wire into __main__.py. Implements §15.2.
+**Prerequisite:** P7-T03b complete.
+**Hard deps:** P7-T03b
+**Files:** tsm/commands/phase.py, tests/commands/test_phase.py
 **Reviewer:** Skip
-**Key constraints:**
-- All commands must already work via CLI before being wired into the TUI — do not add TUI-only code paths or bypass the command layer
-- Context-aware greying is display-only — command functions still perform their own precondition checks; a greyed button that is somehow triggered must still abort cleanly
-- After any write command applies, call load_project() again and refresh both panels from the new LoadedProject — do not mutate in-place
 **Done when:**
-- TUI launches without error against a valid project directory (tsm with no subcommand)
-- All 8 keybindings (a, i, c, v, u, s, ?, q) dispatch to the correct handler
-- ConfirmOverlay appears for advance, init-phase, and complete-phase; applying updates both panels
-- Command bar greys out init-phase when active task is set
-- Command bar greys out complete-phase when any tasks in the current phase are not complete
-- Command bar greys out undo when history log is empty or all entries are [undone]
+- test_phase_add_appends_phase_block passes
+- test_phase_add_updates_phase_structure_table passes
+- test_phase_edit_name_updates_heading_and_table passes
+- test_phase_move_reorders_h1_blocks passes
+- test_phase_remove_blocked_by_deps passes
+- test_phase_remove_force_cascade passes
 
 ---
 
@@ -49,14 +45,19 @@ Spec: `SPECIFICATION-task-session-manager-v1.6.md`
 
 | Task | Description | Hard deps | Complexity | Reviewer |
 |------|-------------|-----------|------------|----------|
+| P7-T05 | commands/task.py — task CRUD commands | P7-T03 | unset |  |
+| P7-T06 | ui/task_form.py — TaskFormOverlay widget | P6-T05 | unset |  |
+| P7-T07 | commands/repair.py | P7-T01, P3-T03, P3-T04, P3-T05 | medium | Skip |
+| P7-T08 | commands/sync.py | P7-T01, P3-T03, P3-T04, P3-T05 | medium | Skip |
 
 ---
 
 ## Out of scope
 
-- Network calls, LLM calls, telemetry of any kind (§14)
+- Network calls outside import_cmd.py — no other module may make network calls (§14)
 - General Markdown parser libraries — line iterator state machine only (§9.1)
 - Multi-level undo — single-level only in v1.0 (§14)
-- Dependency graph edge validation in vibe-check — display/preservation only in v1.0 (§14)
+- Dependency graph ASCII art regeneration — preserved verbatim, never rewritten (§14)
 - --output json on read-only commands — deferred to v2 (§2.2)
 - TUI-only code paths — all business logic stays in the command layer (§14)
+- Graphical dependency visualisation (SVG/HTML) — ASCII only in v1 (§14)

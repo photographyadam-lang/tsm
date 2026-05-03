@@ -45,7 +45,7 @@ class WriteError(TsmError):
 # ── Known command definitions ────────────────────────────────────────────────
 
 # Write commands (return list[PendingWrite], use confirm→apply flow)
-_WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase"})
+_WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase", "phase"})
 
 # Read-only commands (print to stdout, no PendingWrite)
 _READ_COMMANDS = frozenset({"status", "vibe-check", "undo", "deps"})
@@ -255,7 +255,7 @@ def _handle_new_project(rest: list[str]) -> None:
 def _handle_write_command(
     command: str, loaded: LoadedProject, rest: list[str], yes_flag: bool
 ) -> None:
-    """Dispatch a write command (advance, init-phase, complete-phase)."""
+    """Dispatch a write command (advance, init-phase, complete-phase, phase)."""
     try:
         if command == "advance":
             # Advance can take an optional commit message
@@ -275,6 +275,86 @@ def _handle_write_command(
             from tsm.commands.complete_phase import complete_phase
 
             pending_writes = complete_phase(loaded)
+        elif command == "phase":
+            if not rest:
+                print("Usage: tsm phase <add|edit|move|remove> [args...]")
+                sys.exit(1)
+            subcommand = rest[0]
+            sub_args = rest[1:]
+            from tsm.commands.phase import (
+                phase_add,
+                phase_edit,
+                phase_move,
+                phase_remove,
+            )
+
+            if subcommand == "add":
+                # tsm phase add <name> [--after <phase-id>] [--status <status>]
+                if not sub_args:
+                    print("Usage: tsm phase add <name> [--after <phase-id>] [--status <status>]")
+                    sys.exit(1)
+                name = sub_args[0]
+                after = None
+                status = "Pending"
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--after" and i + 1 < len(sub_args):
+                        after = sub_args[i + 1]
+                        i += 2
+                    elif sub_args[i] == "--status" and i + 1 < len(sub_args):
+                        status = sub_args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                pending_writes = phase_add(loaded, name, after_phase_id=after, status=status)
+            elif subcommand == "edit":
+                # tsm phase edit <phase-id> [--name <name>] [--status <status>]
+                if not sub_args:
+                    print("Usage: tsm phase edit <phase-id> [--name <name>] [--status <status>]")
+                    sys.exit(1)
+                phase_id = sub_args[0]
+                name = None
+                status = None
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--name" and i + 1 < len(sub_args):
+                        name = sub_args[i + 1]
+                        i += 2
+                    elif sub_args[i] == "--status" and i + 1 < len(sub_args):
+                        status = sub_args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                pending_writes = phase_edit(loaded, phase_id, name=name, status=status)
+            elif subcommand == "move":
+                # tsm phase move <phase-id> --after <phase-id>
+                if len(sub_args) < 3:
+                    print("Usage: tsm phase move <phase-id> --after <phase-id>")
+                    sys.exit(1)
+                phase_id = sub_args[0]
+                after = None
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--after" and i + 1 < len(sub_args):
+                        after = sub_args[i + 1]
+                        break
+                    i += 1
+                if after is None:
+                    print("Usage: tsm phase move <phase-id> --after <phase-id>")
+                    sys.exit(1)
+                pending_writes = phase_move(loaded, phase_id, after)
+            elif subcommand == "remove":
+                # tsm phase remove <phase-id> [--force]
+                if not sub_args:
+                    print("Usage: tsm phase remove <phase-id> [--force]")
+                    sys.exit(1)
+                phase_id = sub_args[0]
+                force = "--force" in sub_args
+                pending_writes = phase_remove(loaded, phase_id, force=force)
+            else:
+                print(f"Unknown phase subcommand: {subcommand}")
+                print("Usage: tsm phase <add|edit|move|remove> [args...]")
+                sys.exit(1)
         else:
             # Should never reach here
             return

@@ -562,7 +562,7 @@ Commit message when complete: "P7-T01: deps.py — dependency engine"
 
 ---
 
-### P7-T02 — commands/deps.py
+### P7-T02 — commands/deps.py - done
 
 ```
 Build P7-T02 as specified.
