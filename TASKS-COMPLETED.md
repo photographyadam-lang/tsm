@@ -66,3 +66,6 @@
 | P7-T02 | commands/deps.py — deps command | low | advanced |  |
 | P7-T03a | tasks_writer.py — block insert, remove, and field replacement | medium | advanced |  |
 | P7-T03b | tasks_writer.py — block reorder operations | high | advanced |  |
+| P7-T04 | commands/phase.py — phase CRUD commands | medium | advanced |  |
+| P7-T05 | commands/task.py — task CRUD commands | medium | advanced |  |
+| P7-T06 | ui/task_form.py — TaskFormOverlay widget | medium | advanced |  |

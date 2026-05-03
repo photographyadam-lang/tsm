@@ -1,4 +1,4 @@
-*Last updated: 2026-05-02T16:43*
+*Last updated: 2026-05-03T14:11*
 
 ---
 
@@ -17,27 +17,34 @@ Spec: `SPECIFICATION-task-session-manager-v1.6.md`
 | P7-T02 | commands/deps.py — deps command | advanced |
 | P7-T03a | tasks_writer.py — block insert, remove, and field replacement | advanced |
 | P7-T03b | tasks_writer.py — block reorder operations | advanced |
+| P7-T04 | commands/phase.py — phase CRUD commands | advanced |
+| P7-T05 | commands/task.py — task CRUD commands | advanced |
+| P7-T06 | ui/task_form.py — TaskFormOverlay widget | advanced |
 
 ---
 
 ## Active task
 
-### P7-T04 · commands/phase.py — phase CRUD commands
+### P7-T07 · commands/repair.py
 
 **Status:** Pending
 **Complexity:** medium
-**What:** Implement tsm/commands/phase.py with four functions: phase_add(ctx, name, after_phase_id, status) -> list[PendingWrite]; phase_edit(ctx, phase_id, name, status) -> list[PendingWrite]; phase_move(ctx, phase_id, after_phase_id) -> list[PendingWrite]; phase_remove(ctx, phase_id, force) -> list[PendingWrite]. Each function: (1) applies the intended transformation to an in-memory copy of ctx.phases to produce the proposed state; (2) calls check_deps() on the proposed state; (3) for remove without force, aborts if check_deps returns errors; (4) builds PendingWrite for TASKS.md using structural writer functions from P7-T03a/T03b. phase_add creates a new phase block and updates the Phase structure table. phase_edit updates heading and/or Phase structure table row. phase_move calls reorder_phase_blocks. phase_remove calls remove_phase_block; with --force proceeds despite dep errors and lists dangling deps in confirm summary. Add HELP_TEXT. Wire into __main__.py. Implements §15.2.
-**Prerequisite:** P7-T03b complete.
-**Hard deps:** P7-T03b
-**Files:** tsm/commands/phase.py, tests/commands/test_phase.py
+**What:** Implement tsm/commands/repair.py with repair(ctx: LoadedProject, tasks: bool, session: bool, completed: bool) -> list[PendingWrite]. If all three flags False, set all to True (repair everything). TASKS.md repairs per §15.4: fill missing required fields with defaults, normalize malformed status tokens, detect duplicate IDs and rename second occurrence to <id>-duplicate automatically (no interactive prompt — rename shown in confirm summary), skip unparseable blocks and report them. SESSIONSTATE.md repairs: validate active task ID against TASKS.md, rebuild up_next if mismatched, upgrade legacy timestamp. TASKS-COMPLETED.md repairs: remove rows with unknown task IDs, remove empty phase sections. Every change listed in PendingWrite.summary_lines with [defaulted]/[normalized]/[removed]/[skipped] label and before/after values. Running repair twice on a clean file produces zero changes. Add HELP_TEXT. Implements §15.4.
+**Prerequisite:** P7-T01 complete.
+**Hard deps:** P7-T01, P3-T03, P3-T04, P3-T05
+**Files:** tsm/commands/repair.py, tests/commands/test_repair.py
 **Reviewer:** Skip
+**Key constraints:**
+- repair must never silently delete content — every change appears in the confirm summary with before/after
+- Duplicate ID rename is automatic (second occurrence → <id>-duplicate) — no interactive prompting during staging
+- Running repair on an already-clean project must produce zero changes and exit 0 (idempotency)
 **Done when:**
-- test_phase_add_appends_phase_block passes
-- test_phase_add_updates_phase_structure_table passes
-- test_phase_edit_name_updates_heading_and_table passes
-- test_phase_move_reorders_h1_blocks passes
-- test_phase_remove_blocked_by_deps passes
-- test_phase_remove_force_cascade passes
+- test_repair_fills_missing_fields passes
+- test_repair_removes_vc10_rows passes
+- test_repair_normalizes_session_task_id passes
+- test_repair_skips_unparseable_content passes
+- Confirm summary groups changes by file and labels each change correctly
+- Running repair twice on an already-clean file produces zero changes (idempotency test)
 
 ---
 
@@ -45,9 +52,6 @@ Spec: `SPECIFICATION-task-session-manager-v1.6.md`
 
 | Task | Description | Hard deps | Complexity | Reviewer |
 |------|-------------|-----------|------------|----------|
-| P7-T05 | commands/task.py — task CRUD commands | P7-T03 | unset |  |
-| P7-T06 | ui/task_form.py — TaskFormOverlay widget | P6-T05 | unset |  |
-| P7-T07 | commands/repair.py | P7-T01, P3-T03, P3-T04, P3-T05 | medium | Skip |
 | P7-T08 | commands/sync.py | P7-T01, P3-T03, P3-T04, P3-T05 | medium | Skip |
 
 ---

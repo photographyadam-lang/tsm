@@ -45,7 +45,7 @@ class WriteError(TsmError):
 # ── Known command definitions ────────────────────────────────────────────────
 
 # Write commands (return list[PendingWrite], use confirm→apply flow)
-_WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase", "phase"})
+_WRITE_COMMANDS = frozenset({"advance", "init-phase", "complete-phase", "phase", "task"})
 
 # Read-only commands (print to stdout, no PendingWrite)
 _READ_COMMANDS = frozenset({"status", "vibe-check", "undo", "deps"})
@@ -354,6 +354,112 @@ def _handle_write_command(
             else:
                 print(f"Unknown phase subcommand: {subcommand}")
                 print("Usage: tsm phase <add|edit|move|remove> [args...]")
+                sys.exit(1)
+        elif command == "task":
+            if not rest:
+                print("Usage: tsm task <add|edit|move|remove> [args...]")
+                sys.exit(1)
+            subcommand = rest[0]
+            sub_args = rest[1:]
+            from tsm.commands.task import (
+                task_add,
+                task_edit,
+                task_move,
+                task_remove,
+            )
+
+            if subcommand == "add":
+                # tsm task add <phase-id> <title> [--after <task-id>]
+                if len(sub_args) < 2:
+                    print(
+                        "Usage: tsm task add <phase-id> <title> "
+                        "[--after <task-id>]"
+                    )
+                    sys.exit(1)
+                phase_id = sub_args[0]
+                # Title may be multiple words — collect until --after
+                title_parts = []
+                after_task_id = None
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--after" and i + 1 < len(sub_args):
+                        after_task_id = sub_args[i + 1]
+                        break
+                    title_parts.append(sub_args[i])
+                    i += 1
+                title = " ".join(title_parts)
+                pending_writes = task_add(
+                    ctx, phase_id, title, after_task_id=after_task_id
+                )
+            elif subcommand == "edit":
+                # tsm task edit <task-id> --field <name> --value <value>
+                if len(sub_args) < 5:
+                    print(
+                        "Usage: tsm task edit <task-id> "
+                        "--field <name> --value <value>"
+                    )
+                    sys.exit(1)
+                task_id = sub_args[0]
+                field = None
+                value = None
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--field" and i + 1 < len(sub_args):
+                        field = sub_args[i + 1]
+                        i += 2
+                    elif sub_args[i] == "--value" and i + 1 < len(sub_args):
+                        value = sub_args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                if field is None or value is None:
+                    print(
+                        "Usage: tsm task edit <task-id> "
+                        "--field <name> --value <value>"
+                    )
+                    sys.exit(1)
+                pending_writes = task_edit(ctx, task_id, field, value)
+            elif subcommand == "move":
+                # tsm task move <task-id> --phase <phase-id> [--after <task-id>]
+                if len(sub_args) < 4:
+                    print(
+                        "Usage: tsm task move <task-id> "
+                        "--phase <phase-id> [--after <task-id>]"
+                    )
+                    sys.exit(1)
+                task_id = sub_args[0]
+                target_phase_id = None
+                after_task_id = None
+                i = 1
+                while i < len(sub_args):
+                    if sub_args[i] == "--phase" and i + 1 < len(sub_args):
+                        target_phase_id = sub_args[i + 1]
+                        i += 2
+                    elif sub_args[i] == "--after" and i + 1 < len(sub_args):
+                        after_task_id = sub_args[i + 1]
+                        i += 2
+                    else:
+                        i += 1
+                if target_phase_id is None:
+                    print(
+                        "Usage: tsm task move <task-id> "
+                        "--phase <phase-id> [--after <task-id>]"
+                    )
+                    sys.exit(1)
+                pending_writes = task_move(
+                    ctx, task_id, target_phase_id, after_task_id=after_task_id
+                )
+            elif subcommand == "remove":
+                # tsm task remove <task-id> [--force]
+                if not sub_args:
+                    print("Usage: tsm task remove <task-id> [--force]")
+                    sys.exit(1)
+                task_id = sub_args[0]
+                force = "--force" in sub_args
+                pending_writes = task_remove(ctx, task_id, force=force)
+            else:
+                print(f"Unknown task subcommand: {subcommand}")
+                print("Usage: tsm task <add|edit|move|remove> [args...]")
                 sys.exit(1)
         else:
             # Should never reach here

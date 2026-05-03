@@ -383,6 +383,349 @@ Run `tsm vibe-check` at any point to validate the integrity of your workflow fil
 
 ---
 
+## LLM Prompts
+
+> These prompts are designed for you to paste into a conversation with any LLM (Claude, GPT, etc.) to check, repair, or convert the three workflow files — [`TASKS.md`](../TASKS.md), [`SESSIONSTATE.md`](../SESSIONSTATE.md), and [`TASKS-COMPLETED.md`](../TASKS-COMPLETED.md) — **without** using the `tsm` tool itself.
+>
+> Each prompt is self-contained. Paste the entire prompt block, then paste the file content after it.
+
+---
+
+### Prompt: Check (Validate)
+
+> Use this when you want an LLM to validate the integrity of your workflow files against the spec. Paste this prompt, then paste each file's content.
+
+```
+You are a validation assistant. I will give you the contents of three Markdown files that
+follow a specific workflow format: TASKS.md, SESSIONSTATE.md, and TASKS-COMPLETED.md.
+
+Your job is to check each file against the rules below and produce a numbered list of every
+issue found, with the severity (Error or Warning), the file and line reference, and a
+description of the problem. If no issues are found, say "All checks passed."
+
+--- RULES ---
+
+TASKS.md rules:
+
+1. File must start with an H1 heading (#) as the project title.
+2. After the preamble, there must be a ## Phase structure table with 3 columns:
+   | Phase | Description | Status |
+3. Every row in the Phase structure table must correspond to an actual H1 phase section
+   later in the file. The status column must use a recognised status token.
+4. Phase sections are H1 headings (#). Each has:
+   - A **Status:** line immediately after the heading
+   - An optional narrative paragraph
+   - One or more H3 task blocks (### ID · Title)
+   - A ### Dependency graph block at the end (fenced code block)
+5. Task blocks begin with ### <ID> · <title> and end at the next ###, ##, #, or --- line.
+6. Each task block must have ALL of these fields (exact **Label:** syntax):
+   - **Status:** — one of: ✅ Complete, **Active**, Active, Pending, 🔒 Blocked, ❌ Blocked,
+     ⚠️ Needs review, In progress
+   - **Complexity:** — one of: high, medium, low, unset
+   - **What:** — description (may span multiple lines)
+   - **Prerequisite:** — human-readable, or "None."
+   - **Hard deps:** — comma-separated task IDs, "None", "—", or blank
+   - **Files:** — comma-separated paths, or blank
+   - **Reviewer:** — any text
+   - **Key constraints:** — OPTIONAL bullet list (omit if none)
+   - **Done when:** — acceptance criteria (may span multiple lines)
+7. Task IDs match the pattern [A-Z0-9]+-[A-Z][0-9]+ (e.g. P1-T01, U-A1). They must be
+   unique across the entire file.
+8. All task IDs in Hard deps must exist as task IDs elsewhere in the file.
+9. Multi-line field values continue until the next **Label:** line or a structural boundary
+   (#, ---).
+
+SESSIONSTATE.md rules:
+
+10. First non-blank line must be *Last updated: YYYY-MM-DDTHH:MM* (ISO 8601 date + hour +
+    minute).
+11. Sections are delimited by --- horizontal rules, in this order:
+    - ## Active phase
+    - ## Completed tasks (table with columns: Task | Description | Commit message)
+    - ## Active task (verbatim copy of the task block from TASKS.md)
+    - ## Up next (table with columns: Task | Description | Hard deps | Complexity | Reviewer)
+    - ## Out of scope (bullet list)
+12. ## Active task must contain either the literal [none] or a complete task block (### ID ·
+    title with all **Field:** lines). If a task block is present, the task ID must exist in
+    TASKS.md.
+13. ## Active phase must contain the phase name, status, and spec reference. If set, the
+    phase name must exist in TASKS.md.
+14. Every task listed in ## Up next must exist in TASKS.md.
+15. Every task listed in ## Completed tasks must exist in TASKS.md.
+16. ## Out of scope content is informational — never modify it.
+
+TASKS-COMPLETED.md rules:
+
+17. File starts with "# Completed Tasks Log".
+18. Each phase section is a ## heading. Within it, a table with columns:
+    | Task | Description | Complexity | Commit message | Notes |
+19. All task IDs in the table rows must exist in TASKS.md.
+20. Existing rows are never modified — only appended.
+
+Cross-file rules:
+
+21. If a task is marked as **Active** or In progress in SESSIONSTATE.md, its status in
+    TASKS.md must NOT be ✅ Complete.
+22. If a task is listed in ## Up next and has Hard deps, those deps should ideally be met
+    (status ✅ Complete in TASKS.md). Unmet deps are a warning.
+23. *Last updated:* more than 7 days ago is a warning (stale session).
+
+Produce output in this format for each issue:
+  [Error|Warning] [File] — [description] (around line N)
+
+For unset/none/blank fields or [none] active task, produce warnings, not errors.
+```
+
+---
+
+### Prompt: Repair (Fix Issues)
+
+> Use this when you've run a check and found issues, or when files are known to be corrupt/malformed. Paste this prompt, then paste the file content.
+
+```
+You are a file repair specialist. I will give you the content of one or more workflow
+Markdown files (TASKS.md, SESSIONSTATE.md, TASKS-COMPLETED.md) that have structural
+issues. Your job is to fix them according to the rules below.
+
+Output the FULL repaired file content for each file. Do not abbreviate or use placeholders.
+
+--- REPAIR RULES ---
+
+General rules:
+- Preserve all content that is valid. Only change what is broken.
+- Maintain byte-for-byte fidelity for all content you do not touch.
+- After repair, the file must parse correctly under the spec rules.
+
+TASKS.md repairs:
+
+1. **Missing required fields:** If a task block is missing **Status:**, **Complexity:**,
+   **What:**, **Prerequisite:**, **Hard deps:**, **Files:**, **Reviewer:**, or
+   **Done when:**, add the missing field with a safe default:
+   - Status → "Pending"
+   - Complexity → "unset"
+   - Hard deps → "None"
+   - Reviewer → "Skip"
+   - Prerequisite → "None."
+   - Files → "" (blank line)
+   - If **Key constraints:** is absent, leave it absent — it's optional
+   - Insert missing fields in the canonical field order (see below)
+2. **Canonical field order within a task block:**
+   Status → Complexity → What → Prerequisite → Hard deps → Files → Reviewer →
+   Key constraints (optional) → Done when
+3. **Malformed status tokens:** Normalise recognised tokens:
+   - "Complete", "completed", "DONE" → "✅ Complete"
+   - "Active" (not bold), "ACTIVE" → "**Active**"
+   - "in-progress", "in_progress" → "In progress"
+   - "BLOCKED", "blocked" → "🔒 Blocked"
+   - "needs review", "needs_review" → "⚠️ Needs review"
+   Unknown status tokens → leave as-is and flag in summary.
+4. **Malformed complexity:** Normalise to lowercase: HIGH → high, Medium → medium,
+   Unset → unset. Unknown values → "unset".
+5. **Duplicate task IDs:** If two task blocks have the same ID, rename the second
+   occurrence to <id>-duplicate (e.g. P1-T01-duplicate). Log both in a summary.
+6. **Missing **:** on field labels:** If a field line has "Status:" instead of
+   "**Status:**", add the bold markers.
+7. **Dependency graph blocks:** Leave completely unchanged — never modify them.
+8. **Phase structure table:** If a phase exists as an H1 section but is missing from
+   the ## Phase structure table, add a row for it. If a table row has no matching
+   H1 section, remove the row.
+9. **Phase **Status:** lines:** If a phase heading (#) is missing its **Status:** line,
+   add it with value "Pending".
+
+SESSIONSTATE.md repairs:
+
+10. **Active task ID not in TASKS.md:** If the ## Active task block contains a task
+    ID that does not exist in TASKS.md, replace the entire ## Active task content
+    with "[none]" and note the removed ID in a summary.
+11. **Up next IDs not in TASKS.md:** Remove any rows from ## Up next table whose
+    task ID does not exist in TASKS.md. Note each removal.
+12. **Legacy date format:** If *Last updated:* has only a date (YYYY-MM-DD) without
+    time, append T00:00 to make it YYYY-MM-DDTHH:MM.
+13. **Active task format:** Ensure the ## Active task block (if not [none]) is a
+    verbatim copy from TASKS.md — it must start with ### <ID> · <title> and contain
+    all **Field:** lines exactly as in TASKS.md. If it differs, replace it with the
+    correct content from TASKS.md.
+
+TASKS-COMPLETED.md repairs:
+
+14. **Unknown task IDs:** Remove any table rows whose task ID does not exist in
+    TASKS.md. Note each removed row.
+15. **Empty phase sections:** If a ## phase section has no table rows, remove the
+    entire section (heading + table header + empty body).
+
+After repairs, produce a summary like:
+  Repairs applied:
+  - [TASKS.md] Added missing **Status:** to P1-T05 (default: Pending)
+  - [TASKS.md] Renamed duplicate P1-T01 → P1-T01-duplicate
+  - [SESSIONSTATE.md] Removed unknown task X-T99 from ## Up next
+  - [TASKS-COMPLETED.md] Removed row with unknown ID Y-T01
+  - 0 errors remaining after repair
+```
+
+---
+
+### Prompt: Convert (Transform to tsm Format)
+
+> Use this when you have existing project notes, checklists, or unstructured Markdown that you want to convert into the tsm workflow format. Paste this prompt, then paste your source material.
+
+```
+You are a format converter. I will give you unstructured or semi-structured project notes
+and I want you to convert them into the tsm (Task and Session State Manager) workflow
+format. You will output three files: TASKS.md, SESSIONSTATE.md, and TASKS-COMPLETED.md.
+
+If the source material has phases and tasks, group them accordingly. If the source is a
+flat list of items, create a single phase "Phase 1 — Migration" with all items as tasks.
+
+--- OUTPUT FORMAT ---
+
+TASKS.md structure:
+
+```
+# <Project Name> — Phase Task List
+
+> [optional: a short description of the project]
+
+---
+
+## Phase structure
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| **<Phase Name>** | <brief description> | Pending |
+
+---
+
+# <PHASE NAME> — <Subtitle>
+
+**Status:** Pending
+
+[optional: paragraph describing the phase]
+
+---
+
+## <Sub-phase heading (optional)>
+
+### <PREFIX-T01> · <Task title>
+**Status:** Pending
+**Complexity:** <high | medium | low | unset>
+**What:** <description of what to build — 1-3 sentences>
+**Prerequisite:** <what must be done first, or "None.">
+**Hard deps:** <comma-separated task IDs, or "None">
+**Files:** <comma-separated file paths, or blank>
+**Reviewer:** <Skip | Human review required | etc.>
+**Key constraints:**
+- <rule the AI must not violate — omit if none>
+**Done when:**
+- <specific, verifiable acceptance criteria>
+```
+
+TASK ID GENERATION:
+- Phase prefix: take the first letter of each major word in the phase name, uppercase.
+  E.g. "Phase 1 — Foundation" → prefix "P1", "Assessment Unification" → prefix "A",
+  "Phase 2 — Widget Engine" → prefix "P2".
+- Task numbers: T01, T02, T03, etc.
+- Combined: P1-T01, P1-T02, A-T01, P2-T01.
+
+If a phase already has a task naming scheme (e.g. "U-A1", "S-T06"), preserve it.
+
+FIELD RULES:
+- Status: use "Pending" for all new tasks, "✅ Complete" for tasks already done
+- Complexity: infer from context — "high" for complex multi-file work, "medium" for
+  standard changes, "low" for simple/config edits, "unset" if unsure
+- Prerequisite: "None." if no dependency
+- Hard deps: comma-separated task IDs, or "None"
+- Files: comma-separated paths, or blank
+- Reviewer: "Skip" if not specified
+- Key constraints: include only if there are important rules the AI must follow
+- Done when: list specific, testable criteria — each on its own bullet line
+
+SESSIONSTATE.md structure:
+
+```
+*Last updated: <current datetime in YYYY-MM-DDTHH:MM format>
+
+---
+
+## Active phase
+
+<none>
+
+---
+
+## Completed tasks
+
+| Task | Description | Commit message |
+|------|-------------|----------------|
+|      |             |                |
+
+---
+
+## Active task
+
+[none]
+
+---
+
+## Up next
+
+| Task | Description | Hard deps | Complexity | Reviewer |
+|------|-------------|-----------|------------|----------|
+|      |             |           |            |          |
+
+---
+
+## Out of scope
+
+(empty — add nothing)
+```
+
+TASKS-COMPLETED.md structure:
+
+```
+# Completed Tasks Log
+
+---
+
+## <Phase name>
+
+| Task | Description | Complexity | Commit message | Notes |
+|------|-------------|------------|----------------|-------|
+```
+
+- Populate TASKS-COMPLETED.md only with tasks you marked as ✅ Complete
+- Leave commit message and notes columns blank
+
+CONVERSION GUIDELINES:
+
+1. Group related items into phases. A good phase has 3-10 tasks.
+2. Order tasks by dependency — tasks that must come first get lower numbers.
+3. Set Hard deps based on natural order: if task B needs task A's output, B's
+   Hard deps includes A's ID.
+4. Multi-line **What:** and **Done when:** values are fine — use clear line breaks.
+5. If the source has an order, preserve it. If not, use logical grouping.
+6. If the source is entirely unstructured (e.g. a brainstorm dump), create one
+   phase "Phase 1 — Initial Build" with reasonable task groupings.
+7. Output ALL THREE files in full, clearly labelled with "--- TASKS.md ---",
+   "--- SESSIONSTATE.md ---", "--- TASKS-COMPLETED.md ---" markers.
+8. After conversion, explain your phase/task grouping decisions in a brief summary.
+```
+
+---
+
+### Quick reference
+
+| Situation | Prompt to use |
+|-----------|---------------|
+| Files look OK but you want a second opinion | [Check](#prompt-check-validate) |
+| Files have known issues or corruption | [Repair](#prompt-repair-fix-issues) |
+| Starting a new project from scratch | Use `tsm new-project` instead |
+| Adapting existing notes/checklists into tsm format | [Convert](#prompt-convert-transform-to-tsm-format) |
+| One file needs a quick fix (e.g. bad status token) | [Repair](#prompt-repair-fix-issues) with just that file |
+| Validate after making manual edits | [Check](#prompt-check-validate) |
+| Existing project using a different format | [Convert](#prompt-convert-transform-to-tsm-format) |
+
+---
+
 ## Exit Codes
 
 | Code | Meaning | Raised by |
