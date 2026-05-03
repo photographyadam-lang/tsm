@@ -13,3 +13,6 @@ dependencies = [
 
 [project.scripts]
 tsm = "tsm.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["tsm*"]

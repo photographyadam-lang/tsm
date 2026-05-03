@@ -18,12 +18,20 @@
   - [`tsm status`](#tsm-status)
   - [`tsm vibe-check`](#tsm-vibe-check)
   - [`tsm undo`](#tsm-undo)
+  - [`tsm deps`](#tsm-deps)
+  - [`tsm phase`](#tsm-phase)
+  - [`tsm task`](#tsm-task)
+  - [`tsm repair`](#tsm-repair)
 - [TUI (Terminal User Interface)](#tui-terminal-user-interface)
   - [Keybindings](#keybindings)
+  - [Context-aware command bar](#context-aware-command-bar)
   - [Panels](#panels)
+  - [Task form overlay](#task-form-overlay)
 - [The Shadow Write Model](#the-shadow-write-model)
 - [Typical Workflow](#typical-workflow)
 - [File Reference](#file-reference)
+- [LLM Prompts](#llm-prompts)
+- [Exit Codes](#exit-codes)
 
 ---
 
@@ -133,6 +141,8 @@ tsm --help            # Same as 'tsm help'
 
 Read-only. Does not require a project root.
 
+---
+
 ### `tsm new-project`
 
 ```bash
@@ -150,6 +160,8 @@ Scaffolds a complete set of blank workflow files in the current directory. Preve
 6. `.tsm/` — shadow/ and backups/ subdirectories
 7. `.gitignore` — `.tsm/` entry appended (idempotent)
 
+---
+
 ### `tsm init-phase`
 
 ```bash
@@ -166,6 +178,8 @@ Initialises [`SESSIONSTATE.md`](../SESSIONSTATE.md) for the start of a phase. Th
 
 **Writes:** [`SESSIONSTATE.md`](../SESSIONSTATE.md) only.
 
+---
+
 ### `tsm advance`
 
 ```bash
@@ -176,6 +190,8 @@ tsm advance --yes                   # Skip confirmation prompt
 
 Marks the current active task as **Complete**, promotes the next ready task from **Up next** to **Active**, and appends a row to [`TASKS-COMPLETED.md`](../TASKS-COMPLETED.md). Also updates the completed task's `**Status:**` line in [`TASKS.md`](../TASKS.md) to `✅ Complete`.
 
+The "just-advanced task" counts as meeting hard deps for the purpose of selecting the next task. This means you can advance a task even if the next task's hard deps include the task you are completing.
+
 **Preconditions:**
 - A project root must exist
 - An active task must be set
@@ -184,6 +200,8 @@ Marks the current active task as **Complete**, promotes the next ready task from
 1. [`SESSIONSTATE.md`](../SESSIONSTATE.md) — promotes next task
 2. [`TASKS.md`](../TASKS.md) — targeted status line update only
 3. [`TASKS-COMPLETED.md`](../TASKS-COMPLETED.md) — appends new row
+
+---
 
 ### `tsm complete-phase`
 
@@ -203,6 +221,8 @@ Rotates to the next phase (the first phase after the current one whose status is
 2. [`TASKS.md`](../TASKS.md) — targeted phase status line update
 3. [`TASKS-COMPLETED.md`](../TASKS-COMPLETED.md) — appends phase-complete marker
 
+---
+
 ### `tsm status`
 
 ```bash
@@ -217,6 +237,8 @@ Prints a structured summary of the current session state to stdout:
 - Completed task count
 
 **Read-only.** Does not modify any files.
+
+---
 
 ### `tsm vibe-check`
 
@@ -244,6 +266,8 @@ Validates the integrity of [`TASKS.md`](../TASKS.md), [`SESSIONSTATE.md`](../SES
 
 **Read-only.** Does not modify any files.
 
+---
+
 ### `tsm undo`
 
 ```bash
@@ -255,6 +279,132 @@ Reverts the most recent `tsm apply` operation. Restores live files from the back
 If there is nothing to undo (no history, or all entries already marked `[undone]`), prints `"Nothing to undo."` and exits gracefully.
 
 **Single-level only** — no multi-level undo.
+
+---
+
+### `tsm deps`
+
+```bash
+tsm deps                         # Show full dependency tree (same as --tree)
+tsm deps <task-id>               # Show dependencies for one task
+tsm deps --tree                  # Show full ASCII dependency tree
+tsm deps --blocked               # Show only tasks with unmet dependencies
+tsm deps --check                 # Validate all dependencies; exit 1 on issues
+```
+
+Inspects and validates task dependency relationships across all phases.
+
+**Modes:**
+
+| Mode | Description |
+|------|-------------|
+| `task-id` | Prints what the given task depends on (depends-on) and what depends on it (required-by), with status icons. |
+| `--tree` | Prints all tasks organised by phase, with dependency arrows pointing to each task's hard deps. Summary line shows total task count, blocked count, and cycle count. |
+| `--blocked` | Lists tasks whose hard deps include at least one task that is not yet complete, along with what they are waiting on. |
+| `--check` | Runs full validation: no dangling deps, no cycles, no self-references. Prints "✅ No dependency issues found." on success; prints issues and exits with code 1 on failure. |
+
+**Read-only.** Does not modify any files.
+
+---
+
+### `tsm phase`
+
+Phase CRUD commands — add, edit, move, and remove phases in [`TASKS.md`](../TASKS.md).
+
+```bash
+tsm phase add <name> [--after <phase-id>] [--status <status>]
+tsm phase edit <phase-id> [--name <name>] [--status <status>]
+tsm phase move <phase-id> --after <phase-id>
+tsm phase remove <phase-id> [--force]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add` | Add a new phase. If `--after` is omitted, the phase is appended at the end. Default status is `Pending`. |
+| `edit` | Edit a phase's display name and/or status. At least one of `--name` or `--status` must be provided. |
+| `move` | Move a phase to a new position relative to another phase. |
+| `remove` | Remove a phase and all its tasks. Without `--force`, removal is blocked if any tasks outside the phase depend on tasks within it. With `--force`, removal proceeds and dangling dependencies are listed in the summary. |
+
+**Dependency pre-write gate:** Before staging the write, `tsm phase` validates the proposed state via the dependency engine. If `check_deps()` returns errors, the operation aborts with exit 1 (unless `--force` is passed for remove).
+
+**Writes:** [`TASKS.md`](../TASKS.md) — updated phase block and Phase structure table.
+
+**Examples:**
+```bash
+tsm phase add "Phase 7 — Foo" --after phase-6-bar
+tsm phase edit phase-7-foo --name "Phase 7 — Foo Updated" --status "Complete"
+tsm phase move phase-7-foo --after phase-3-baz
+tsm phase remove phase-7-foo
+tsm phase remove phase-7-foo --force
+```
+
+---
+
+### `tsm task`
+
+Task CRUD commands — add, edit, move, and remove tasks in [`TASKS.md`](../TASKS.md).
+
+```bash
+tsm task add <phase-id> <title> [--after <task-id>]
+tsm task edit <task-id> --field <name> --value <value>
+tsm task move <task-id> --phase <phase-id> [--after <task-id>]
+tsm task remove <task-id> [--force]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add` | Add a new task to a phase. A task ID is auto-generated. If `--after` is omitted, the task is inserted at the beginning of the task section (before the Dependency graph block). |
+| `edit` | Edit a single field on a task. `--field` accepts: `status`, `What`, `Done when`, `Key constraints`, `hard_deps`, `Complexity`, `Prerequisite`, `Files`, `Reviewer`. For status edits, uses targeted status line replacement; all other fields use `update_task_field()`. |
+| `move` | Move a task to a different phase or reorder within the same phase. If `--phase` is omitted or equals the current phase, the task is reordered within its current phase. Also updates [`SESSIONSTATE.md`](../SESSIONSTATE.md) if the moved task is active or in up-next. |
+| `remove` | Remove a task from its phase. Without `--force`, removal is blocked if any other tasks depend on this task. With `--force`, removal proceeds and dangling dependencies are listed in the summary. |
+
+**Dependency pre-write gate:** Before staging the write, `tsm task` validates the proposed state via the dependency engine. For `hard_deps` edits, the dep gate checks for cycles, dangling refs, and self-references.
+
+**Writes:**
+1. [`TASKS.md`](../TASKS.md) — updated task block
+2. [`SESSIONSTATE.md`](../SESSIONSTATE.md) — updated if the moved task is active or in up-next (move only)
+
+**Examples:**
+```bash
+tsm task add phase-7-foo "Implement widget"
+tsm task add phase-7-foo "Add tests" --after P7-T05
+tsm task edit P7-T10 --field What --value "New description"
+tsm task edit P7-T10 --field status --value "Active"
+tsm task edit P7-T10 --field hard_deps --value "P7-T01, P7-T02"
+tsm task move P7-T10 --phase phase-7-foo --after P7-T09
+tsm task remove P7-T10
+tsm task remove P7-T10 --force
+```
+
+---
+
+### `tsm repair`
+
+```bash
+tsm repair                          # Repair all three files
+tsm repair --tasks                  # Repair TASKS.md only
+tsm repair --session                # Repair SESSIONSTATE.md only
+tsm repair --completed              # Repair TASKS-COMPLETED.md only
+tsm repair --session --completed    # Repair specific files
+```
+
+Repairs inconsistencies in workflow files. When no flags are specified, all three files are repaired. Every change appears in the confirm summary with before/after context.
+
+**TASKS.md repairs:**
+- Fill missing required fields with safe defaults
+- Normalise malformed status tokens to canonical form
+- Detect duplicate task IDs and rename second occurrence to `<id>-duplicate`
+- Skip unparseable content and report it
+
+**SESSIONSTATE.md repairs:**
+- Upgrade legacy date-only timestamps to `YYYY-MM-DDTHH:MM`
+- Clear active task if its ID does not exist in [`TASKS.md`](../TASKS.md)
+
+**TASKS-COMPLETED.md repairs:**
+- Remove rows with task IDs not found in [`TASKS.md`](../TASKS.md)
+- Remove empty phase sections
+
+All repairs go through the shadow model. The confirm summary groups changes by file and labels each with `[defaulted]`, `[duplicate]`, `[normalized]`, `[removed]`, or `[skipped]`. Repair is idempotent — running it on an already-clean project produces zero changes.
 
 ---
 
@@ -306,16 +456,25 @@ This greying is **display-only** — the underlying command functions still perf
 ### Panels
 
 **Left panel — TaskTree:**
-Shows all phases and their tasks in a collapsible tree. The active task is highlighted. Click on any task to view its details in the right panel.
+Shows all phases and their tasks in a collapsible tree. Each phase header shows the phase name and status. Tasks within a phase display their ID, title, and status with colour-coded icons. The active task is highlighted. Click on any task to view its details in the right panel.
 
 **Right panel — TaskDetail (default):**
 Displays the full detail of the selected or active task, including its status, complexity, description, hard dependencies, files, key constraints, and the "Done when" criteria.
 
 **Right panel — VibecheckPanel (v key):**
-Shows the results of the most recent vibe-check, listing any errors or warnings found.
+Shows the results of the most recent vibe-check, listing any errors or warnings found organised by severity.
 
 **Right panel — HelpPanel (? key):**
-Displays the full command reference.
+Displays the full command reference with all available CLI commands and their usage.
+
+### Task form overlay
+
+The TUI includes a `TaskFormOverlay` modal screen (triggered by `tsm task` commands with the `--interactive` flag) that provides labelled input fields for all editable task fields:
+
+- **Add mode** — all fields start blank for creating a new task
+- **Edit mode** — fields pre-populated from the existing task
+
+Fields include: Title, Status, Complexity, What, Prerequisite, Hard deps, Files, Reviewer, Key constraints, and Done when. On confirm, returns a dictionary of only the changed fields. Required fields (title) show validation errors if left empty.
 
 ---
 
@@ -334,9 +493,13 @@ The `--yes` flag skips the confirm step, equivalent to `--assume-yes`.
 ### Safety guarantees
 
 - **No silent overwrites** — every write is previewed before being applied
-- **Single-level undo** — the most recent apply can always be reverted via `tsm undo`
+- **Single-level undo** — the most recent apply can always be reverted via [`tsm undo`](#tsm-undo)
 - **Backup retention** — the last 5 backups per file are kept in `.tsm/backups/`
 - **`.gitignore` enforcement** — the `.tsm/` directory is automatically added to `.gitignore` so shadow files and backups are never committed
+
+### Dependency pre-write gate (Phase 7 CRUD commands)
+
+All [`tsm phase`](#tsm-phase) and [`tsm task`](#tsm-task) write commands call `check_deps()` on the **proposed in-memory state** after applying the intended transformation, but before staging writes. For remove operations this means checking the state *after* the task/phase has been removed from memory. If `check_deps()` returns errors, the operation aborts with exit 1 unless `--force` is passed (remove commands only).
 
 ---
 
@@ -362,9 +525,28 @@ graph LR
 5. **Complete phase** — `tsm complete-phase` once all tasks in a phase are done
 6. **Repeat** — `tsm init-phase phase-2`, build, advance, complete...
 
+### Managing tasks and phases
+
+As your project evolves, use the CRUD commands to restructure:
+
+- **Add a phase** — `tsm phase add "Phase 7 — Foo"` to insert a new phase
+- **Add a task** — `tsm task add phase-7-foo "Implement widget"` to add a task with auto-generated ID
+- **Edit a task** — `tsm task edit P7-T01 --field What --value "New description"` to update any field
+- **Move a task** — `tsm task move P7-T03 --phase phase-7-foo --after P7-T01` to reorganise
+- **Remove a task** — `tsm task remove P7-T05 --force` to delete with dependency override
+
+### Dependency management
+
+Use [`tsm deps`](#tsm-deps) to understand and validate dependency chains:
+
+- `tsm deps P1-T03` — See what a task depends on and what depends on it
+- `tsm deps --tree` — Visualise the full dependency tree with status icons
+- `tsm deps --blocked` — Find all tasks blocked by incomplete dependencies
+- `tsm deps --check` — Validate the entire graph for cycles and dangling refs
+
 ### Validation checkpoints
 
-Run `tsm vibe-check` at any point to validate the integrity of your workflow files. This is especially useful before advancing or completing a phase.
+Run `tsm vibe-check` at any point to validate the integrity of your workflow files. This is especially useful before advancing or completing a phase. For deeper automated fixes, use `tsm repair` to fix common issues like missing fields, malformed status tokens, or duplicate task IDs.
 
 ---
 
@@ -372,14 +554,16 @@ Run `tsm vibe-check` at any point to validate the integrity of your workflow fil
 
 | File | `tsm` relationship | Notes |
 |------|-------------------|-------|
-| [`TASKS.md`](../TASKS.md) | Read + write (status lines only) | Never reformatted; targeted replacement only |
+| [`TASKS.md`](../TASKS.md) | Read + write | Status-only for workflow commands; structural for Phase 7 CRUD |
 | [`SESSIONSTATE.md`](../SESSIONSTATE.md) | Read + write (full reconstruction) | Out-of-scope section never modified |
 | [`TASKS-COMPLETED.md`](../TASKS-COMPLETED.md) | Read + append only | Never modifies existing rows |
-| [`AGENTS.md`](../AGENTS.md) | Read-only — never modified | Agent rules file |
-| [`SPECIFICATION.md`](../SPECIFICATION.md) | Read-only — never modified | Project specification |
+| [`AGENTS.md`](../AGENTS.md) | **Read-only — never modified** | Agent rules file |
+| [`SPECIFICATION.md`](../SPECIFICATION.md) | **Read-only — never modified** | Project specification |
 | `.tsm/shadow/` | Write (staging) | Cleared on discard |
 | `.tsm/backups/` | Write (backup on apply) | Last 5 per file kept |
 | `.tsm/history.log` | Append | One line per apply; `[undone]` suffix on undo |
+| `.tsm/config.toml` | Read-only | API key for `tsm import`; never written by tsm |
+| `.gitignore` | Append only (idempotent) | Adds `.tsm/` entry once |
 
 ---
 
@@ -731,7 +915,7 @@ CONVERSION GUIDELINES:
 | Code | Meaning | Raised by |
 |------|---------|-----------|
 | `0` | Success | All commands |
-| `1` | Precondition failure or generic error | Missing project root, unknown command |
+| `1` | Precondition failure or generic error | Missing project root, unknown command, `tsm deps --check` failure |
 | `2` | Parse error | Invalid [`TASKS.md`](../TASKS.md) or [`SESSIONSTATE.md`](../SESSIONSTATE.md) |
 | `3` | Write error | Failed file write operation |
 

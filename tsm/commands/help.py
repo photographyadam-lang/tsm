@@ -24,14 +24,17 @@ tsm — Task and Session State Manager
 Usage: tsm <command> [options]
 
 Commands:
-  init-phase <phase-id>    Initialise SESSIONSTATE.md for the start of a phase
   advance                  Complete active task, promote next task to active
   complete-phase           Mark current phase done, rotate to the next phase
-  vibe-check               Validate integrity of TASKS.md and SESSIONSTATE.md
-  status                   Print current session state (read-only)
-  undo                     Revert the most recent apply operation
-  new-project [--name]     Scaffold blank workflow files in the current directory
+  deps [--tree|--blocked|--check]   Inspect and validate task dependencies
   help [command]           Show this help, or detail for a specific command
+  init-phase <phase-id>    Initialise SESSIONSTATE.md for the start of a phase
+  new-project [--name]     Scaffold blank workflow files in the current directory
+  phase <add|edit|move|remove> [args...]  Phase CRUD commands
+  status                   Print current session state (read-only)
+  task <add|edit|move|remove> [args...]   Task CRUD commands
+  undo                     Revert the most recent apply operation
+  vibe-check               Validate integrity of TASKS.md and SESSIONSTATE.md
 
 Run 'tsm help <command>' for full usage of any command.
 """
@@ -40,14 +43,17 @@ Run 'tsm help <command>' for full usage of any command.
 # ── Command mapping from CLI name to module path ──────────────────────────────
 
 _COMMAND_NAMES: dict[str, str] = {
-    "init-phase": "tsm.commands.init_phase",
     "advance": "tsm.commands.advance",
     "complete-phase": "tsm.commands.complete_phase",
-    "vibe-check": "tsm.commands.vibe_check",
-    "status": "tsm.commands.status",
-    "undo": "tsm.commands.undo",
-    "new-project": "tsm.commands.new_project",
+    "deps": "tsm.commands.deps",
     "help": "tsm.commands.help",
+    "init-phase": "tsm.commands.init_phase",
+    "new-project": "tsm.commands.new_project",
+    "phase": "tsm.commands.phase",
+    "status": "tsm.commands.status",
+    "task": "tsm.commands.task",
+    "undo": "tsm.commands.undo",
+    "vibe-check": "tsm.commands.vibe_check",
 }
 
 
