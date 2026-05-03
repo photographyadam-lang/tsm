@@ -69,3 +69,5 @@
 | P7-T04 | commands/phase.py — phase CRUD commands | medium | advanced |  |
 | P7-T05 | commands/task.py — task CRUD commands | medium | advanced |  |
 | P7-T06 | ui/task_form.py — TaskFormOverlay widget | medium | advanced |  |
+| P7-T07 | commands/repair.py | medium | advanced |  |
+| P7-T08 | commands/sync.py | medium | advanced |  |
