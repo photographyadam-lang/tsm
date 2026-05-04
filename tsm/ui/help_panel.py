@@ -82,10 +82,32 @@ class HelpPanel(Widget):
     def _build_renderable(self) -> Text:
         """Build a Rich :class:`Text` renderable from the help text.
 
-        The output is plain text rendered in a monospace style that
-        matches the CLI help output exactly.
+        Appends a TUI keybindings reference after the CLI help text.
         """
-        return Text(self._help_text, style="bold")
+        t = Text(self._help_text, style="bold")
+        t.append("\n\n")
+        t.append("── TUI keybindings ──────────────────────────────────────\n", style="bold underline")
+        t.append("\n")
+        bindings = [
+            ("a", "Advance active task"),
+            ("i", "Initialise phase"),
+            ("c", "Complete phase"),
+            ("d", "Show dependency tree (press again for blocked view)"),
+            ("v", "Run vibe check"),
+            ("r", "Repair workflow files"),
+            ("u", "Undo last apply"),
+            ("s", "Print status (to CLI)"),
+            ("p", "Phase CRUD (add / edit / move / remove)"),
+            ("t", "Task CRUD (add / edit / move / remove)"),
+            ("?", "Show this help panel"),
+            ("q", "Quit"),
+        ]
+        for key, desc in bindings:
+            t.append(f"  [{key}] ", style="bold cyan")
+            t.append(f"{desc}\n")
+        t.append("\n")
+        t.append("Press Escape or q to dismiss this panel.\n", style="italic")
+        return t
 
     # ── Key handlers ──────────────────────────────────────────────────────
 

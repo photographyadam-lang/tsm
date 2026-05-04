@@ -413,14 +413,15 @@ All repairs go through the shadow model. The confirm summary groups changes by f
 The TUI is built with [Textual](https://textual.textualize.io/) and presents a two-panel layout with a context-aware command bar.
 
 ```
-┌─────────────────────┬──────────────────────┐
-│                     │                       │
-│    TaskTree         │   TaskDetail /        │
-│    (left panel)     │   VibecheckPanel /    │
-│                     │   HelpPanel           │
-├─────────────────────┴──────────────────────┤
-│  [a]Advance [i]Init [c]Complete ...        │
-└────────────────────────────────────────────┘
+┌─────────────────────┬──────────────────────────┐
+│                     │                           │
+│    TaskTree         │   TaskDetail /            │
+│    (left panel)     │   VibecheckPanel /        │
+│                     │   HelpPanel /             │
+│                     │   Depspanel               │
+├─────────────────────┴──────────────────────────┤
+│  [a]Advance [i]Init [c]Complete [d]Deps ...    │
+└────────────────────────────────────────────────┘
 ```
 
 ### Launching the TUI
@@ -437,21 +438,32 @@ tsm
 | `a` | **Advance** | Mark active task complete, promote next task. Prompts for an optional commit message, then shows a confirmation overlay before applying. |
 | `i` | **Init Phase** | Initialise a new phase. Prompts for the phase ID (e.g. `phase-2`), then shows a confirmation overlay. Greyed out when an active task is already set. |
 | `c` | **Complete Phase** | Mark the current phase complete and rotate to the next one. Shows a confirmation overlay. Greyed out when any tasks in the current phase are incomplete. |
+| `d` | **Deps** | Show the dependency tree in the right panel. Press `d` again to toggle between **tree** view (default) and **blocked** view. Greyed out when there are no phases or tasks. |
 | `v` | **Vibe Check** | Run integrity validation and display results in the right panel. |
+| `r` | **Repair** | Repair inconsistencies in workflow files. Prompts which files to repair (all/tasks/session/completed), then shows a confirmation overlay before applying. |
 | `u` | **Undo** | Revert the most recent apply operation. Greyed out when there is nothing to undo. |
 | `s` | **Status** | Print the current session state to the terminal. |
-| `?` | **Help** | Show the help panel in the right panel. |
+| `p` | **Phase** | Phase CRUD — prompts for a sub-action (add / edit / move / remove), gathers parameters via input prompts, then shows a confirmation overlay before applying. |
+| `t` | **Task** | Task CRUD — prompts for a sub-action (add / edit / move / remove). **Add** and **edit** use the interactive `TaskFormOverlay` modal. **Move**/**remove** use input prompts. All operations go through the confirmation overlay. |
+| `?` | **Help** | Show the help panel in the right panel (includes a TUI keybindings reference). |
 | `q` | **Quit** | Exit the TUI. |
 
 ### Context-aware command bar
 
-The command bar at the bottom of the TUI shows all available keybindings. Buttons are styled in **dim** (greyed out) when the action is not available:
+The command bar at the bottom of the TUI shows all available keybindings in `[key] Label` format. Buttons are styled in **dim** (greyed out) when the action is not available:
 
-- **Init** (i) — greyed when an active task is already set
-- **Complete** (c) — greyed when any tasks in the current phase are not marked Complete
-- **Undo** (u) — greyed when the history log is empty or all entries are marked `[undone]`
+- **Init** (`i`) — greyed when an active task is already set
+- **Complete** (`c`) — greyed when any tasks in the current phase are not marked Complete
+- **Deps** (`d`) — greyed when there are no phases or tasks in the project
+- **Undo** (`u`) — greyed when the history log is empty or all entries are marked `[undone]`
 
 This greying is **display-only** — the underlying command functions still perform their own precondition checks, so triggering a greyed action still aborts cleanly.
+
+Example command bar output:
+
+```
+  [a] Advance  [i] Init  [c] Complete  [d] Deps  [v] Vibe  [r] Repair  [u] Undo  [s] Status  [p] Phase  [t] Task  [?] Help  [q] Quit
+```
 
 ### Panels
 
@@ -461,20 +473,23 @@ Shows all phases and their tasks in a collapsible tree. Each phase header shows 
 **Right panel — TaskDetail (default):**
 Displays the full detail of the selected or active task, including its status, complexity, description, hard dependencies, files, key constraints, and the "Done when" criteria.
 
-**Right panel — VibecheckPanel (v key):**
+**Right panel — VibecheckPanel (`v` key):**
 Shows the results of the most recent vibe-check, listing any errors or warnings found organised by severity.
 
-**Right panel — HelpPanel (? key):**
-Displays the full command reference with all available CLI commands and their usage.
+**Right panel — HelpPanel (`?` key):**
+Displays the full command reference with all available CLI commands and their usage, plus a TUI keybindings reference section.
+
+**Right panel — Depspanel (`d` key):**
+Shows the dependency tree with all tasks organised by phase, dependency arrows, status icons, and a summary line (task count, blocked count, cycle count). Press `d` again to toggle to the **blocked** view, which lists only tasks with unmet dependencies and what they are waiting on. Press `Escape` or `q` to dismiss.
 
 ### Task form overlay
 
-The TUI includes a `TaskFormOverlay` modal screen (triggered by `tsm task` commands with the `--interactive` flag) that provides labelled input fields for all editable task fields:
+The TUI includes a `TaskFormOverlay` modal screen used directly by the **Task add** and **Task edit** TUI commands (`t` key → add/edit). It provides labelled input fields for all editable task fields:
 
-- **Add mode** — all fields start blank for creating a new task
-- **Edit mode** — fields pre-populated from the existing task
+- **Add mode** (`t` → add) — all fields start blank for creating a new task in a specified phase
+- **Edit mode** (`t` → edit) — fields pre-populated from the existing task; only changed fields are submitted
 
-Fields include: Title, Status, Complexity, What, Prerequisite, Hard deps, Files, Reviewer, Key constraints, and Done when. On confirm, returns a dictionary of only the changed fields. Required fields (title) show validation errors if left empty.
+Fields include: Title (required), Complexity, What, Prerequisite, Hard deps, Files, Reviewer, Key constraints, and Done when. On confirm, returns a dictionary of only the changed fields. Required fields (title) show validation errors if left empty.
 
 ---
 

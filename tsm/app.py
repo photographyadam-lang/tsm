@@ -1,11 +1,11 @@
-# tsm/app.py — Full TUI wiring (Phase 6, P6-T05)
+# tsm/app.py — Full TUI wiring (Phase 6, P6-T05 / Phase 7)
 #
 # Implements §8.1–§8.5 of the specification.
 #
 # TsmApp is a Textual App with a two-panel layout:
 #   - Left panel:  TaskTree (phases & tasks)
 #   - Right panel: TaskDetail (default), VibecheckPanel (vibe-check),
-#                  or HelpPanel (help)
+#                  HelpPanel (help), or Depspanel (deps)
 #   - Bottom bar:  Context-aware command buttons
 #
 # Keybindings per §8.4:
@@ -15,6 +15,10 @@
 #   v  vibe-check        — run integrity validation
 #   u  undo              — revert most recent apply
 #   s  status            — print session status to CLI
+#   d  deps              — show dependency tree / blocked tasks
+#   r  repair            — repair workflow files
+#   p  phase             — phase CRUD: add / edit / move / remove
+#   t  task              — task CRUD: add / edit / move / remove
 #   ?  help              — show help panel
 #   q  quit              — exit the TUI
 #
@@ -175,7 +179,7 @@ class TsmApp(App):
     CSS = _CSS
 
     # ── Reactive state ────────────────────────────────────────────────────────
-    # Which panel is shown on the right: "detail", "vibe", or "help"
+    # Which panel is shown on the right: "detail", "vibe", "help", or "deps"
     right_panel_mode: reactive[str] = reactive("detail")  # type: ignore[assignment]
 
     BINDINGS = [
@@ -185,6 +189,10 @@ class TsmApp(App):
         ("v", "vibe_check", "Run vibe check"),
         ("u", "undo", "Undo last apply"),
         ("s", "status", "Print status"),
+        ("d", "deps", "Show dependency tree"),
+        ("r", "repair", "Repair workflow files"),
+        ("p", "phase", "Phase CRUD"),
+        ("t", "task", "Task CRUD"),
         ("?", "help", "Show help"),
         ("q", "quit", "Quit"),
     ]
@@ -201,21 +209,21 @@ class TsmApp(App):
         self._task_detail_widget = None
         self._vibe_panel_widget = None
         self._help_panel_widget = None
+        self._deps_panel_widget = None
 
     # ── Compose ───────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
         """Build the widget tree.
 
-        Layout:
-
-        .. code-block::
+        Layout::
 
             ┌─────────────────────┬──────────────────────┐
             │                     │                       │
             │    TaskTree         │   TaskDetail /        │
             │    (left panel)     │   VibecheckPanel /    │
-            │                     │   HelpPanel           │
+            │                     │   HelpPanel /         │
+            │                     │   Depspanel           │
             ├─────────────────────┴──────────────────────┤
             │  [a]Advance [i]Init [c]Complete ...        │
             └────────────────────────────────────────────┘
@@ -257,6 +265,7 @@ class TsmApp(App):
         - complete-phase greyed when any tasks in the current phase are
           not complete
         - undo greyed when history log has no undoable entry
+        - deps greyed when no phases/tasks exist
         """
         project = self._project
         session = project.session
@@ -294,6 +303,12 @@ class TsmApp(App):
         except Exception:
             undo_disabled = True
 
+        # Deps: greyed when no phases or no tasks
+        has_tasks = any(
+            len(phase.tasks) > 0 for phase in project.phases
+        )
+        deps_disabled = not has_tasks
+
         # Build the command bar label
         parts: list[str] = []
 
@@ -304,9 +319,13 @@ class TsmApp(App):
         parts.append(_btn("[a] Advance"))
         parts.append(_btn("[i] Init", disabled=init_disabled))
         parts.append(_btn("[c] Complete", disabled=complete_disabled))
+        parts.append(_btn("[d] Deps", disabled=deps_disabled))
         parts.append(_btn("[v] Vibe"))
+        parts.append(_btn("[r] Repair"))
         parts.append(_btn("[u] Undo", disabled=undo_disabled))
         parts.append(_btn("[s] Status"))
+        parts.append(_btn("[p] Phase"))
+        parts.append(_btn("[t] Task"))
         parts.append(_btn("[?] Help"))
         parts.append(_btn("[q] Quit"))
 
@@ -363,6 +382,17 @@ class TsmApp(App):
             help_text = get_help_text(None)
             panel = HelpPanel(help_text=help_text, id="help-panel")
             self._help_panel_widget = panel
+            await container.mount(panel)
+
+        elif new_mode == "deps":
+            from tsm.ui.deps_panel import Depspanel
+
+            panel = Depspanel(
+                ctx=self._project,
+                mode="tree",
+                id="deps-panel",
+            )
+            self._deps_panel_widget = panel
             await container.mount(panel)
 
         # Refresh command bar
@@ -547,6 +577,572 @@ class TsmApp(App):
 
         status(self._project)
 
+    # ── New commands: deps, repair, phase, task ───────────────────────────────
+
+    def action_deps(self) -> None:
+        """Show dependency tree — swap right panel to Depspanel.
+
+        Re-presses ``d`` while the Depspanel is visible to toggle between
+        the tree view and the blocked-tasks view.
+        """
+        if self.right_panel_mode == "deps":
+            # Already showing deps — toggle between tree and blocked
+            from tsm.ui.deps_panel import Depspanel
+
+            container = self.query_one("#right-panel-container", Vertical)
+            if container is not None and self._deps_panel_widget is not None:
+                panel = self._deps_panel_widget
+                # Cycle: tree → blocked → tree
+                new_mode = "blocked" if panel._mode == "tree" else "tree"
+                new_panel = Depspanel(
+                    ctx=self._project,
+                    mode=new_mode,
+                    id="deps-panel",
+                )
+                self._deps_panel_widget = new_panel
+                container.remove_children()
+                container.mount(new_panel)
+                new_panel._update_content()
+            return
+
+        self.right_panel_mode = "deps"
+
+    async def action_repair(self) -> None:
+        """Repair workflow files.
+
+        Flow:
+          1. Ask which files to repair (all / tasks / session / completed)
+          2. Call ``repair()`` to get pending writes
+          3. Show ConfirmOverlay
+          4. If confirmed, call ``shadow.apply()``
+          5. Reload project from disk and refresh both panels
+        """
+        from tsm.commands.repair import repair
+        from tsm.shadow import apply
+
+        # Step 1: ask user which files to repair
+        choice = await self.push_screen_with_result(
+            InputScreen(
+                "Repair: [all] / [tasks] / [session] / [completed]: ",
+                default="all",
+            )
+        )
+        if choice is None:
+            return  # User cancelled
+
+        choice = choice.strip().lower()
+
+        # Map user input to flags
+        repair_tasks = choice in ("all", "tasks")
+        repair_session = choice in ("all", "session")
+        repair_completed = choice in ("all", "completed")
+
+        if not repair_tasks and not repair_session and not repair_completed:
+            self.notify(
+                "Invalid choice. Use: all, tasks, session, or completed.",
+                severity="error",
+                timeout=5,
+            )
+            return
+
+        # Step 2: call repair command
+        try:
+            pending_writes = repair(
+                self._project,
+                tasks=repair_tasks,
+                session=repair_session,
+                completed=repair_completed,
+            )
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        if not pending_writes:
+            self.notify("No repairs needed.", severity="information", timeout=3)
+            return
+
+        # Step 3: show confirm overlay
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        # Step 4: apply
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        # Step 5: reload and refresh
+        self._reload_and_refresh()
+
+    async def action_phase(self) -> None:
+        """Phase CRUD: add / edit / move / remove.
+
+        Prompts for a sub-action, then gathers the required parameters
+        via InputScreen prompts, calls the appropriate command function,
+        and shows ConfirmOverlay before applying.
+        """
+        from tsm.shadow import apply
+
+        # Step 1: ask which sub-action
+        sub = await self.push_screen_with_result(
+            InputScreen(
+                "Phase action: [add] / [edit] / [move] / [remove]: ",
+                default="add",
+            )
+        )
+        if sub is None:
+            return
+        sub = sub.strip().lower()
+
+        if sub == "add":
+            await self._phase_add()
+        elif sub == "edit":
+            await self._phase_edit()
+        elif sub == "move":
+            await self._phase_move()
+        elif sub == "remove":
+            await self._phase_remove()
+        else:
+            self.notify(
+                "Invalid phase action. Use: add, edit, move, or remove.",
+                severity="error",
+                timeout=5,
+            )
+
+    async def _phase_add(self) -> None:
+        """Add a new phase."""
+        from tsm.commands.phase import phase_add
+        from tsm.shadow import apply
+
+        # Prompt for phase name
+        name = await self.push_screen_with_result(
+            InputScreen("Phase name (e.g. 'Phase 8 — Foo'): ")
+        )
+        if name is None or not name.strip():
+            return
+        name = name.strip()
+
+        # Prompt for optional after_phase_id
+        after = await self.push_screen_with_result(
+            InputScreen("Insert after phase ID (or blank for end): ")
+        )
+        after_phase_id = after.strip() if after and after.strip() else None
+
+        try:
+            pending_writes = phase_add(self._project, name=name, after_phase_id=after_phase_id)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        # Show confirm overlay
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    async def _phase_edit(self) -> None:
+        """Edit a phase name and/or status."""
+        from tsm.commands.phase import phase_edit
+        from tsm.shadow import apply
+
+        # Prompt for phase ID
+        phase_id = await self.push_screen_with_result(
+            InputScreen("Phase ID to edit: ")
+        )
+        if phase_id is None or not phase_id.strip():
+            return
+        phase_id = phase_id.strip()
+
+        # Prompt for new name (optional)
+        name = await self.push_screen_with_result(
+            InputScreen("New name (or blank to skip): ")
+        )
+        name = name.strip() if name else None
+
+        # Prompt for new status (optional)
+        status = await self.push_screen_with_result(
+            InputScreen("New status (or blank to skip): ")
+        )
+        status = status.strip() if status else None
+
+        if name is None and status is None:
+            self.notify("No changes provided.", severity="warning", timeout=3)
+            return
+
+        try:
+            pending_writes = phase_edit(self._project, phase_id=phase_id, name=name, status=status)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    async def _phase_move(self) -> None:
+        """Move a phase to a new position."""
+        from tsm.commands.phase import phase_move
+        from tsm.shadow import apply
+
+        phase_id = await self.push_screen_with_result(
+            InputScreen("Phase ID to move: ")
+        )
+        if phase_id is None or not phase_id.strip():
+            return
+        phase_id = phase_id.strip()
+
+        after = await self.push_screen_with_result(
+            InputScreen("Move after phase ID: ")
+        )
+        if after is None or not after.strip():
+            return
+        after_phase_id = after.strip()
+
+        try:
+            pending_writes = phase_move(self._project, phase_id=phase_id, after_phase_id=after_phase_id)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    async def _phase_remove(self) -> None:
+        """Remove a phase and all its tasks."""
+        from tsm.commands.phase import phase_remove
+        from tsm.shadow import apply
+
+        phase_id = await self.push_screen_with_result(
+            InputScreen("Phase ID to remove: ")
+        )
+        if phase_id is None or not phase_id.strip():
+            return
+        phase_id = phase_id.strip()
+
+        # Ask about force flag
+        force_choice = await self.push_screen_with_result(
+            InputScreen("Force removal? [yes] / [no]: ", default="no")
+        )
+        if force_choice is None:
+            return
+        force = force_choice.strip().lower() in ("yes", "y")
+
+        try:
+            pending_writes = phase_remove(self._project, phase_id=phase_id, force=force)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    async def action_task(self) -> None:
+        """Task CRUD: add / edit / move / remove.
+
+        Prompts for a sub-action, then gathers the required parameters
+        (using TaskFormOverlay for add and edit), calls the appropriate
+        command function, and shows ConfirmOverlay before applying.
+        """
+        sub = await self.push_screen_with_result(
+            InputScreen(
+                "Task action: [add] / [edit] / [move] / [remove]: ",
+                default="add",
+            )
+        )
+        if sub is None:
+            return
+        sub = sub.strip().lower()
+
+        if sub == "add":
+            await self._task_add()
+        elif sub == "edit":
+            await self._task_edit()
+        elif sub == "move":
+            await self._task_move()
+        elif sub == "remove":
+            await self._task_remove()
+        else:
+            self.notify(
+                "Invalid task action. Use: add, edit, move, or remove.",
+                severity="error",
+                timeout=5,
+            )
+
+    async def _task_add(self) -> None:
+        """Add a new task using the interactive TaskFormOverlay."""
+        from tsm.commands.task import task_add
+        from tsm.shadow import apply
+
+        # Step 1: ask which phase
+        phase_id = await self.push_screen_with_result(
+            InputScreen("Add to phase ID: ")
+        )
+        if phase_id is None or not phase_id.strip():
+            return
+        phase_id = phase_id.strip()
+
+        # Step 2: launch TaskFormOverlay for add mode
+        from tsm.ui.task_form import TaskFormOverlay
+
+        form_result: dict | None = await self.push_screen_with_result(
+            TaskFormOverlay(task=None)
+        )
+        if form_result is None:
+            return  # User cancelled
+
+        # Extract title — required
+        title = str(form_result.get("title", "")).strip()
+        if not title:
+            self.notify("Title is required.", severity="error", timeout=5)
+            return
+
+        # Step 3: call task_add with the form data
+        try:
+            pending_writes = task_add(
+                self._project,
+                phase_id=phase_id,
+                title=title,
+            )
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        # Step 4: show confirm overlay
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        # Step 5: apply
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        # Step 6: reload and refresh
+        self._reload_and_refresh()
+
+    async def _task_edit(self) -> None:
+        """Edit a task using the interactive TaskFormOverlay."""
+        from tsm.commands.task import task_edit
+        from tsm.shadow import apply
+
+        # Step 1: ask which task
+        task_id = await self.push_screen_with_result(
+            InputScreen("Task ID to edit: ")
+        )
+        if task_id is None or not task_id.strip():
+            return
+        task_id = task_id.strip()
+
+        # Step 2: find the existing task to pre-populate the form
+        from tsm.commands.task import _find_task_by_id
+
+        existing_task = _find_task_by_id(self._project.phases, task_id)
+        if existing_task is None:
+            self.notify(f"Task '{task_id}' not found.", severity="error", timeout=5)
+            return
+
+        # Step 3: launch TaskFormOverlay in edit mode
+        from tsm.ui.task_form import TaskFormOverlay
+
+        form_result: dict | None = await self.push_screen_with_result(
+            TaskFormOverlay(task=existing_task)
+        )
+        if form_result is None:
+            return  # User cancelled
+
+        # Step 4: apply each changed field
+        combined_pending = []
+        for field, value in form_result.items():
+            try:
+                pw = task_edit(
+                    self._project,
+                    task_id=task_id,
+                    field=field,
+                    value=value,
+                )
+                combined_pending.extend(pw)
+            except ValueError as exc:
+                self.notify(f"Edit failed for {field}: {exc}", severity="error", timeout=5)
+                return
+
+        if not combined_pending:
+            self.notify("No changes made.", severity="information", timeout=3)
+            return
+
+        # Step 5: show confirm overlay
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(combined_pending)
+        )
+        if not confirmed:
+            return
+
+        # Step 6: apply
+        try:
+            apply(combined_pending)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        # Step 7: reload and refresh
+        self._reload_and_refresh()
+
+    async def _task_move(self) -> None:
+        """Move a task to a different phase or reorder."""
+        from tsm.commands.task import task_move
+        from tsm.shadow import apply
+
+        task_id = await self.push_screen_with_result(
+            InputScreen("Task ID to move: ")
+        )
+        if task_id is None or not task_id.strip():
+            return
+        task_id = task_id.strip()
+
+        target = await self.push_screen_with_result(
+            InputScreen("Target phase ID: ")
+        )
+        if target is None or not target.strip():
+            return
+        target_phase_id = target.strip()
+
+        after = await self.push_screen_with_result(
+            InputScreen("After task ID (or blank for start): ")
+        )
+        after_task_id = after.strip() if after and after.strip() else None
+
+        try:
+            pending_writes = task_move(
+                self._project,
+                task_id=task_id,
+                target_phase_id=target_phase_id,
+                after_task_id=after_task_id,
+            )
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    async def _task_remove(self) -> None:
+        """Remove a task."""
+        from tsm.commands.task import task_remove
+        from tsm.shadow import apply
+
+        task_id = await self.push_screen_with_result(
+            InputScreen("Task ID to remove: ")
+        )
+        if task_id is None or not task_id.strip():
+            return
+        task_id = task_id.strip()
+
+        force_choice = await self.push_screen_with_result(
+            InputScreen("Force removal? [yes] / [no]: ", default="no")
+        )
+        if force_choice is None:
+            return
+        force = force_choice.strip().lower() in ("yes", "y")
+
+        try:
+            pending_writes = task_remove(self._project, task_id=task_id, force=force)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error", timeout=5)
+            return
+
+        from tsm.ui.confirm_overlay import ConfirmOverlay
+
+        confirmed = await self.push_screen_with_result(
+            ConfirmOverlay(pending_writes)
+        )
+        if not confirmed:
+            return
+
+        try:
+            apply(pending_writes)
+        except Exception as exc:
+            self.notify(f"Apply failed: {exc}", severity="error", timeout=5)
+            return
+
+        self._reload_and_refresh()
+
+    # ── Help and quit ─────────────────────────────────────────────────────────
+
     def action_help(self) -> None:
         """Show help panel — swap right panel to HelpPanel."""
         self.right_panel_mode = "help"
@@ -616,10 +1212,15 @@ class TsmApp(App):
                         self._project.phases,
                     )
 
+        # If in deps mode, refresh the deps panel content
+        if self.right_panel_mode == "deps" and self._deps_panel_widget is not None:
+            self._deps_panel_widget._ctx = self._project
+            self._deps_panel_widget._update_content()
+
         # Update command bar
         self._update_command_bar()
 
-    # ── Dismissal handlers from VibecheckPanel / HelpPanel ────────────────────
+    # ── Dismissal handlers ────────────────────────────────────────────────────
 
     def on_vibecheck_panel_dismissed(self, event: Message) -> None:
         """Handle VibecheckPanel dismissal — restore TaskDetail."""
@@ -628,5 +1229,10 @@ class TsmApp(App):
 
     def on_help_panel_dismissed(self, event: Message) -> None:
         """Handle HelpPanel dismissal — restore TaskDetail."""
+        event.stop()
+        self.right_panel_mode = "detail"
+
+    def on_depspanel_dismissed(self, event: Message) -> None:
+        """Handle Depspanel dismissal — restore TaskDetail."""
         event.stop()
         self.right_panel_mode = "detail"
